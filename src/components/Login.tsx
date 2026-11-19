@@ -31,24 +31,30 @@ export function Login({
           zoomerlip<span>FOR ZULIP</span>
         </div>
         <div className="story-copy">
-          <div className="eyebrow">SAME CONVERSATIONS. NEW ENERGY.</div>
+          <div className="eyebrow">CHANNELS · THREADS · DMs</div>
           <h1>
-            Your people.
+            Zulip,
             <br />
-            Your channels.
-            <br />
-            <span>Your kind of place.</span>
+            <span>a little more familiar.</span>
           </h1>
           <p>
-            All the good parts of Zulip, in a place that feels like home. Drop
-            into a channel. Follow a thread. Stay in the loop.
+            Keep your organisations together. Follow topics as threads and pick
+            your own colours.
           </p>
           <div className="story-tags">
             <span># your-community</span>
-            <span>↳ the next big thing</span>
+            <span>↳ a conversation</span>
           </div>
         </div>
-        <footer>Built for conversation. Made to feel familiar.</footer>
+        <footer>
+          <a
+            href="https://github.com/kiranandcode/zoomerlip"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Source on GitHub
+          </a>
+        </footer>
       </section>
       {appearance && <Appearance onClose={() => setAppearance(false)} />}
       <section className="login-side">
@@ -102,12 +108,11 @@ export function Login({
           <div className="login-symbol">
             <KeyRound size={24} />
           </div>
-          <h2>Come on in.</h2>
+          <h2>Sign in</h2>
           <p>Connect your Zulip organization.</p>
           <label>
             Organization URL
             <input
-              autoFocus
               required
               placeholder="https://your-team.zulipchat.com"
               value={url}
@@ -185,9 +190,7 @@ export function Login({
             storage. Passwords are never saved.
           </p>
         </form>
-        <span className="independent">
-          An independent Zulip client. A little more you.
-        </span>
+        <span className="independent">An independent Zulip client.</span>
       </section>
     </div>
   );
