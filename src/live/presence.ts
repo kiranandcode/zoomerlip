@@ -81,10 +81,12 @@ export function startPresence(
   window.addEventListener("pointerdown", input);
   window.addEventListener("keydown", input);
   document.addEventListener("visibilitychange", tick);
+  const unsubscribe = store.subscribe(tick);
   const timer = setInterval(tick, 10000);
   void tick();
   return () => {
     clearInterval(timer);
+    unsubscribe();
     window.removeEventListener("pointerdown", input);
     window.removeEventListener("keydown", input);
     document.removeEventListener("visibilitychange", tick);

@@ -15,7 +15,7 @@ Implemented compose-input throttling, ordered start/stop, idle timeout, blur/hid
 
 Integration: `useSession` registers typing/presence/status/settings and forwards registration/events to `src/live/store.ts`. Composer calls `useTyping`; App renders `TypingIndicator`. These small edits must survive A/B integration. No SessionModel shape changes.
 
-Validation: 10 focused unit tests passed (typing and existing session tests). Production build pending below.
+Validation at first increment: 10 focused unit tests and production build passed; the full unit suite passed 126 tests.
 
 ## API audit
 
@@ -32,9 +32,9 @@ Checked official documentation and upstream implementation on 2026-11-19:
 
 Current status API and upstream view have no expiry parameter. Do not claim server status expiry or emulate it with a browser timer.
 
-## Remaining slices
+## Completion boundary
 
-Presence/status/read receipts, notification rules and deduplication, Android channels/permission/navigation/file picker, push infrastructure audit and regression validation.
+All architecture-feasible C slices are implemented. Closed-app push depends on the operator decision and infrastructure specified below. Status expiry is unavailable in the audited server API. No deployment or distribution was performed.
 
 ## Slice 2: presence and status
 
@@ -50,7 +50,7 @@ Implemented server-synced DM/mention, channel, followed-topic and sound preferen
 
 Account-aware notification navigation resolves the message through the selected account's authenticated API, rejects removed accounts, and loads bounded message context. `OrgCache.load(view, force, requestedAnchor?)` is the only cache API extension. Preserve the Workspace `notificationTarget` integration when merging B.
 
-Validation: 133 web unit tests pass; production build passes. Browser fixture under development caught and removed a duplicated typing indicator. The new suite is `scripts/test-notifications.mjs` on port 4183.
+Validation: 133 web unit tests pass; production build passes. Browser fixtures caught and removed a duplicated typing indicator. The new suite is `scripts/test-notifications.mjs` on port 4183.
 
 Additional audited sources:
 
@@ -94,4 +94,31 @@ Push audit references (read 2026-11-19):
 - https://developer.android.com/develop/ui/views/notifications/notification-permission
 - https://developer.android.com/develop/ui/views/notifications/channels
 
-Commit `0736251`: web notification preferences, deduplication and safe message-context navigation; 133 web unit tests and production build passed. Browser regression verification continues below.
+Commit `0736251`: web notification preferences, deduplication and safe message-context navigation; 133 web unit tests and production build passed. Final regression results are below.
+
+
+## Final verification and parent handoff
+
+- `fa3626d`: typing, presence, status and read receipts.
+- `0736251`: notification preferences, private previews, cross-tab deduplication and account-aware context navigation.
+- `4c9abd2`: Android channels, runtime permission, narrow bridge, single-use routes and attachment MIME support.
+- Final follow-up: receipt dialog portal/focus restoration, immediate initial presence fetch, modern and legacy presence events, stale-response protection, revoked-account cleanup, cancelled notification-lock waiters and Android permission refresh on resume.
+
+Validation on this worktree with Node 22:
+
+- `npm test`: 135 tests pass across 18 files.
+- Production TypeScript/Vite build passes.
+- Android `:app:testReleaseUnitTest :app:lintRelease :app:assembleRelease`: nine tests, lint and release build pass. New feature-warning false positives are annotated at methods reached only through the feature-gated bridge. Existing SDK XML/dependency/older-API attribute warnings remain.
+- Intercepted browser suites on port 4183: notifications, UI, safety, themes and 10,000-member scale fixture pass. Scale rendered 25 initial/30 scrolled member rows; its fixture now intercepts presence. No fixture contacted a real organization.
+- Notification fixture verifies typing start/stop and expiry, account isolation, status editing, read-receipt names, permission only on action, private previews, two-tab deduplication, read suppression, switching accounts from a notification, loading the message anchor and narrow layout.
+- Physical device and closed-app delivery are not verified. Robolectric checks Back dispatch and IME/rotation contracts; existing browser tests exercise mobile Back/dialog/drawer and keyboard behavior.
+
+Integration points for A/B:
+
+1. Preserve `useTyping` compose input/blur/send cleanup and the single `TypingIndicator` next to Composer. All local timers are session scoped; no sends are queued after reconnect.
+2. Preserve `useSession` registration capabilities (`user_settings_object`, `simplified_presence_events`) and event additions, live store forwarding and terminal revocation cleanup. `SessionModel` remains unchanged.
+3. Preserve My profile's status/notification controls, MessageRow's receipt action and Workspace's notification target. Merge search/context navigation with the optional third `OrgCache.load` anchor parameter.
+4. A can use file input MIME filters or unrestricted attachments; native selection accepts document/audio/video/image MIME filters and up to 20 `content://` items. Web upload validation and selected-organization authentication remain A's responsibility.
+5. Parent owns integration, deployment and any authorized APK distribution. No branches were pushed. The exact outstanding push dependency is the operator-owned Firebase project for `me.kirancodes.zoomerlip`, matching FCM sender credentials on compatible bouncer infrastructure, participating-server registration and approved native E2EE/FCM integration. No such credentials or infrastructure were fabricated.
+
+Additional presence event source: https://zulip.com/api/get-events#presence and https://raw.githubusercontent.com/zulip/zulip/main/zerver/actions/presence.py.

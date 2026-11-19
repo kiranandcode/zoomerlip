@@ -34,6 +34,14 @@ export function savePreferences(
   localStorage.setItem(preferencesKey(id), JSON.stringify(preferences));
   window.dispatchEvent(new Event("zoomerlip-notification-preferences"));
 }
+export function clearNotificationHistory(id: string) {
+  try {
+    localStorage.removeItem(ledgerKey(id));
+    localStorage.removeItem(ledgerKey(id) + ".focus");
+  } catch {
+    /* Delivery remains stopped. */
+  }
+}
 export function clearNotificationPreferences(id: string) {
   try {
     localStorage.removeItem(preferencesKey(id));

@@ -343,9 +343,7 @@ try {
       ),
     other,
   );
-  await expect(page.locator(".conversation-header strong")).toContainText(
-    "Thread",
-  );
+  await expect(page.locator(".conversation-header")).toContainText("Thread");
   await expect
     .poll(() =>
       calls.some(

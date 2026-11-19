@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { Eye } from "lucide-react";
 import { getFeatureLevel, request } from "../api";
@@ -22,13 +23,15 @@ export function ReadReceipts({
       >
         <Eye size={17} />
       </button>
-      {open && (
-        <ReceiptDialog
-          account={account}
-          messageId={messageId}
-          close={() => setOpen(false)}
-        />
-      )}
+      {open &&
+        createPortal(
+          <ReceiptDialog
+            account={account}
+            messageId={messageId}
+            close={() => setOpen(false)}
+          />,
+          document.body,
+        )}
     </>
   );
 }
@@ -49,7 +52,13 @@ function ReceiptDialog({
   const store = liveStore(account.id),
     generation = store.generation;
   useEffect(() => {
-    ref.current?.showModal();
+    const dialog = ref.current!,
+      previous = document.activeElement as HTMLElement | null;
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      if (previous?.isConnected) previous.focus();
+    };
   }, []);
   useEffect(() => {
     const controller = new AbortController();

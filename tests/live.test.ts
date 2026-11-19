@@ -67,3 +67,37 @@ it("caps remote typing state and ignores own events", () => {
   expect(store.state.typing).toHaveLength(256);
   expect(store.state.typing.some((t) => t.user === 1)).toBe(false);
 });
+
+it("handles website/legacy and modern presence events without rolling newer events back", () => {
+  const store = new LiveStore();
+  store.register({ zulip_feature_level: 300 });
+  store.events(
+    [
+      {
+        id: 1,
+        type: "presence",
+        user_id: 2,
+        presence: { website: { status: "active", timestamp: 1000 } },
+      },
+    ],
+    account,
+  );
+  expect(store.state.presences[2].active_timestamp).toBe(1000);
+  store.mergePresence({ 2: { active_timestamp: 900, idle_timestamp: 950 } });
+  expect(store.state.presences[2].active_timestamp).toBe(1000);
+  store.events(
+    [
+      {
+        id: 2,
+        type: "presence",
+        presences: {
+          2: { active_timestamp: 1100, idle_timestamp: 1100 },
+          3: { idle_timestamp: 1050 },
+        },
+      },
+    ],
+    account,
+  );
+  expect(store.state.presences[3].idle_timestamp).toBe(1050);
+  expect(store.state.presences[2].active_timestamp).toBe(1100);
+});

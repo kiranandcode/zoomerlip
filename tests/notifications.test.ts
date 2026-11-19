@@ -186,3 +186,23 @@ it("cancels delayed notifications on read, membership loss and disposal", async 
   expect(fake).not.toHaveBeenCalled();
   vi.unstubAllGlobals();
 });
+
+it("does not recreate a removed account ledger for an abandoned lock waiter", async () => {
+  let locked: (() => void) | undefined;
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: {
+      request: (_: string, fn: () => void) => {
+        locked = fn;
+        return Promise.resolve();
+      },
+    },
+  });
+  let alive = true;
+  const deliver = vi.fn(() => true);
+  await claimNotification(account.id, 800, deliver, () => alive);
+  alive = false;
+  locked!();
+  expect(localStorage.getItem(ledgerKey(account.id))).toBeNull();
+  expect(deliver).not.toHaveBeenCalled();
+});

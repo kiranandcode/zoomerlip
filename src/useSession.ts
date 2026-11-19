@@ -1,3 +1,4 @@
+import { clearNotificationHistory } from "./notifications/preferences";
 import { useEffect, useRef, useState } from "react";
 import { getCache } from "./cache";
 import { clearUploadCache } from "./uploads";
@@ -48,6 +49,7 @@ export function useSession(account: Account, active: boolean): Session {
       cache.lock();
       live.clear();
       notifications.dispose();
+      clearNotificationHistory(account.id);
       stopPresence();
       lifetime.abort();
       clearUploadCache(account.id);
@@ -119,7 +121,10 @@ export function useSession(account: Account, active: boolean): Session {
                   "message",
                   "update_message_flags",
                 ],
-                client_capabilities: { user_settings_object: true },
+                client_capabilities: {
+                  user_settings_object: true,
+                  simplified_presence_events: true,
+                },
                 apply_markdown: true,
                 client_gravatar: false,
               },

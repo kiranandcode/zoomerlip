@@ -113,7 +113,7 @@ export class LiveStore {
           const names = { ...this.state.names };
           if (e.op === "remove") delete names[person.user_id];
           else if (person.full_name) names[person.user_id] = person.full_name;
-          this.update({ names });
+          this.update({ names: boundedRecord(names) });
         }
       }
       if (e.type === "user_topic") {
@@ -186,16 +186,24 @@ export class LiveStore {
       } else if (e.type === "presence") {
         if (e.presences) this.mergePresence(e.presences);
         else if (typeof e.user_id === "number") {
-          const p = (
-            e.presence as Record<string, { status: string; timestamp: number }>
-          )?.aggregated;
-          if (p)
-            this.mergePresence({
-              [e.user_id]: {
-                [p.status === "active" ? "active_timestamp" : "idle_timestamp"]:
-                  p.timestamp,
-              },
-            });
+          const merged = { ...this.state.presences[e.user_id] };
+          for (const p of Object.values(
+            (e.presence || {}) as Record<
+              string,
+              { status: string; timestamp: number }
+            >,
+          )) {
+            if (
+              !p ||
+              !Number.isFinite(p.timestamp) ||
+              !["active", "idle"].includes(p.status)
+            )
+              continue;
+            const field =
+              p.status === "active" ? "active_timestamp" : "idle_timestamp";
+            merged[field] = Math.max(merged[field] || 0, p.timestamp);
+          }
+          this.mergePresence({ [e.user_id]: merged });
         }
       } else if (
         (e.type === "user_settings" ||
@@ -212,12 +220,21 @@ export class LiveStore {
     }
   }
   mergePresence(value: unknown) {
-    this.update({
-      presences: boundedRecord({
-        ...this.state.presences,
-        ...boundedRecord(value),
-      }),
-    });
+    const presences = { ...this.state.presences };
+    for (const [id, p] of Object.entries(boundedRecord<Presence>(value))) {
+      if (!p || typeof p !== "object") continue;
+      const merged = { ...presences[id] };
+      for (const field of ["active_timestamp", "idle_timestamp"] as const) {
+        if (
+          typeof p[field] === "number" &&
+          Number.isFinite(p[field]) &&
+          p[field]! >= 0
+        )
+          merged[field] = Math.max(merged[field] || 0, p[field]!);
+      }
+      presences[id] = merged;
+    }
+    this.update({ presences: boundedRecord(presences) });
   }
   expire(now = Date.now()) {
     const typing = this.state.typing.filter((t) => t.until > now);
@@ -267,8 +284,18 @@ export function liveStore(id: string) {
 }
 export function releaseLive(id: string) {
   const s = stores.get(id);
-  s?.clear();
-  if (!s?.listeners.size) stores.delete(id);
+  if (!s) return;
+  s.clear();
+  const generation = s.generation;
+  // Wait for UI subscriptions to unmount; a replacement session advances generation.
+  queueMicrotask(() => {
+    if (
+      stores.get(id) === s &&
+      s.generation === generation &&
+      !s.listeners.size
+    )
+      stores.delete(id);
+  });
 }
 export function useLive(account: Account) {
   const s = liveStore(account.id);

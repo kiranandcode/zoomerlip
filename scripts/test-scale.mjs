@@ -58,6 +58,17 @@ await context.route("**/*", async (route) => {
       zulip_feature_level: 500,
     };
     fulfilledAt = Date.now();
+  } else if (u.pathname === "/api/v1/users/me/presence") {
+    data = {
+      ...data,
+      presence_last_update_id: 1,
+      presences: {
+        [users[1].user_id]: {
+          active_timestamp: Date.now() / 1000,
+          idle_timestamp: Date.now() / 1000,
+        },
+      },
+    };
   } else if (u.pathname === "/api/v1/events") {
     if (
       request.method() === "GET" &&

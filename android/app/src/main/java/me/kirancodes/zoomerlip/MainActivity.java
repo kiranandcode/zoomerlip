@@ -194,7 +194,7 @@ public final class MainActivity extends Activity {
         });
     }
     @Override protected void onPause() { web.onPause(); super.onPause(); }
-    @Override protected void onResume() { super.onResume(); if (web != null) web.onResume(); }
+    @Override protected void onResume() { super.onResume(); if (web != null) { web.onResume(); if (NavigationPolicy.localDocument(web.getUrl())) web.evaluateJavascript("window.dispatchEvent(new Event('zoomerlip-native-ready'))", null); } }
     @Override protected void onDestroy() {
         if (fileSelection != null) fileSelection.onReceiveValue(null);
         web.destroy(); super.onDestroy();

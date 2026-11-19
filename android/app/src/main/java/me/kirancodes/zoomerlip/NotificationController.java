@@ -61,6 +61,8 @@ final class NotificationController {
             return text + ":" + message;
         } catch (Exception e) { throw new IllegalStateException(e); }
     }
+    // MainActivity installs this listener only when WEB_MESSAGE_LISTENER is supported.
+    @android.annotation.SuppressLint("RequiresFeature")
     void handle(String raw, JavaScriptReplyProxy reply) {
         if (raw == null || raw.length() > 16384) return;
         try {
@@ -97,6 +99,8 @@ final class NotificationController {
             if (op.equals("show")) show(account, message, data.optString("title", "Zoomerlip"), data.optString("body", "New message"), data.optBoolean("sound"));
         } catch (Exception ignored) { /* Invalid requests cannot expand bridge capabilities. */ }
     }
+    // A reply proxy exists only after the feature-gated listener receives a message.
+    @android.annotation.SuppressLint("RequiresFeature")
     void permissionResult(JavaScriptReplyProxy reply) {
         if (reply == null) return;
         reply.postMessage("{\"permission\":\"" + (manager.areNotificationsEnabled() ? "granted" : "denied") + "\"}");

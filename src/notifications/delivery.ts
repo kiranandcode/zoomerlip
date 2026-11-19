@@ -11,9 +11,11 @@ export async function claimNotification(
   accountId: string,
   messageId: number,
   deliver: () => boolean,
+  allowed: () => boolean = () => true,
 ) {
   if (!navigator.locks) return;
   await navigator.locks.request(ledgerKey(accountId), () => {
+    if (!allowed()) return;
     let ids: number[];
     try {
       const value = localStorage.getItem(ledgerKey(accountId));
@@ -21,11 +23,15 @@ export async function claimNotification(
       ids = Array.isArray(parsed)
         ? parsed.filter(Number.isSafeInteger).slice(-512)
         : [];
-      if (ids.includes(messageId)) return;
+      if (
+        ids.includes(messageId) ||
+        (ids.length === 512 && messageId < Math.min(...ids))
+      )
+        return;
       // Reserve before a side effect. Storage failure prevents delivery.
       localStorage.setItem(
         ledgerKey(accountId),
-        JSON.stringify([...ids, messageId].slice(-512)),
+        JSON.stringify([...ids, messageId].sort((a, b) => a - b).slice(-512)),
       );
     } catch {
       return;
@@ -80,6 +86,7 @@ export class NotificationDelivery {
   private visible = new Map<number, Notification>();
   private read = new Set<number>();
   private stopped = false;
+  private revision = 0;
   private born = Date.now();
   private owner = crypto.randomUUID();
   private focusTimer: ReturnType<typeof setInterval>;
@@ -155,9 +162,12 @@ export class NotificationDelivery {
         if (event.all) this.clear();
         for (const id of (event.messages || []) as number[]) {
           this.read.add(id);
-          void claimNotification(this.account.id, id, () => false).catch(
-            () => {},
-          );
+          void claimNotification(
+            this.account.id,
+            id,
+            () => false,
+            () => !this.stopped,
+          ).catch(() => {});
           this.remove(id);
         }
         if (this.read.size > 1024)
@@ -191,6 +201,8 @@ export class NotificationDelivery {
     }
   }
   private remove(id: number) {
+    this.read.add(id);
+    if (this.read.size > 1024) this.read = new Set([...this.read].slice(-512));
     clearTimeout(this.pending.get(id));
     this.pending.delete(id);
     this.visible.get(id)?.close();
@@ -199,9 +211,11 @@ export class NotificationDelivery {
   }
   private async notify(message: Message) {
     const store = liveStore(this.account.id),
-      epoch = store.generation;
+      epoch = store.generation,
+      revision = this.revision;
     const eligible = () =>
       !this.stopped &&
+      revision === this.revision &&
       store.state.ready &&
       epoch === store.generation &&
       !this.read.has(message.id);
@@ -214,69 +228,87 @@ export class NotificationDelivery {
       localMutes: currentThreadMutes(this.account.id),
     });
     if (!rule.visual && !rule.sound) return;
-    await claimNotification(this.account.id, message.id, () => {
-      if (!eligible() || !readPreferences(this.account.id).enabled)
-        return false;
-      // Visible activity consumes the claim so another tab cannot notify for it.
-      if (focusedElsewhere(this.account.id)) return false;
-      if (
-        this.active() &&
-        document.visibilityState === "visible" &&
-        document.hasFocus()
-      )
-        return false;
-      const prefs = readPreferences(this.account.id);
-      const { title, body } = notificationText(
-        message,
-        prefs.privatePreview ||
-          (message.type === "private" &&
-            store.state.settings.pm_content_in_desktop_notifications === false),
-      );
-      if (nativeNotifications()) {
-        if (rule.visual)
-          nativeMessage({
-            op: "show",
-            accountId: this.account.id,
-            messageId: message.id,
-            title,
-            body,
-            sound: rule.sound,
-          });
-      } else {
+    await claimNotification(
+      this.account.id,
+      message.id,
+      () => {
+        if (!eligible() || !readPreferences(this.account.id).enabled)
+          return false;
+        // Visible activity consumes the claim so another tab cannot notify for it.
+        if (focusedElsewhere(this.account.id)) return false;
         if (
-          rule.visual &&
-          typeof Notification !== "undefined" &&
-          Notification.permission === "granted"
-        ) {
-          try {
-            const n = new Notification(title, {
+          this.active() &&
+          document.visibilityState === "visible" &&
+          document.hasFocus()
+        )
+          return false;
+        const prefs = readPreferences(this.account.id);
+        const rule = notificationRule(this.account, message, prefs, {
+          settings: store.state.settings,
+          followed: store.state.followed,
+          session: this.session(),
+          localMutes: currentThreadMutes(this.account.id),
+        });
+        if (!rule.visual && !rule.sound) return false;
+        const { title, body } = notificationText(
+          message,
+          prefs.privatePreview ||
+            (message.type === "private" &&
+              store.state.settings.pm_content_in_desktop_notifications ===
+                false),
+        );
+        if (nativeNotifications()) {
+          if (rule.visual)
+            nativeMessage({
+              op: "show",
+              accountId: this.account.id,
+              messageId: message.id,
+              title,
               body,
-              tag: `${this.account.id}:${message.id}`,
-              silent: true,
+              sound: rule.sound,
             });
-            n.onclick = () => {
-              n.close();
-              window.focus();
-              window.dispatchEvent(
-                new CustomEvent("zoomerlip-notification-open", {
-                  detail: { accountId: this.account.id, messageId: message.id },
-                }),
-              );
-            };
-            n.onclose = () => this.visible.delete(message.id);
-            if (this.visible.size >= 64)
-              this.remove(this.visible.keys().next().value!);
-            this.visible.set(message.id, n);
-          } catch {
-            /* Unsupported browser notification constructor. Settings explains availability. */
+          else if (rule.sound) playSound();
+        } else {
+          if (
+            rule.visual &&
+            typeof Notification !== "undefined" &&
+            Notification.permission === "granted"
+          ) {
+            try {
+              const n = new Notification(title, {
+                body,
+                tag: `${this.account.id}:${message.id}`,
+                silent: true,
+              });
+              n.onclick = () => {
+                n.close();
+                window.focus();
+                window.dispatchEvent(
+                  new CustomEvent("zoomerlip-notification-open", {
+                    detail: {
+                      accountId: this.account.id,
+                      messageId: message.id,
+                    },
+                  }),
+                );
+              };
+              n.onclose = () => this.visible.delete(message.id);
+              if (this.visible.size >= 64)
+                this.remove(this.visible.keys().next().value!);
+              this.visible.set(message.id, n);
+            } catch {
+              /* Unsupported browser notification constructor. Settings explains availability. */
+            }
           }
+          if (rule.sound) playSound();
         }
-        if (rule.sound) playSound();
-      }
-      return true;
-    });
+        return true;
+      },
+      eligible,
+    );
   }
   clear() {
+    this.revision++;
     for (const id of this.pending.keys()) clearTimeout(this.pending.get(id));
     this.pending.clear();
     for (const n of this.visible.values()) n.close();

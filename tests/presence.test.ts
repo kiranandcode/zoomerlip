@@ -20,18 +20,16 @@ it("polls at most once per minute, sends real input and incremental cursor, and 
   vi.setSystemTime(1000000);
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  const fetch = vi
-    .fn()
-    .mockImplementation(
-      async () =>
-        new Response(
-          JSON.stringify({
-            result: "success",
-            presence_last_update_id: 8,
-            presences: { 2: { active_timestamp: Date.now() / 1000 } },
-          }),
-        ),
-    );
+  const fetch = vi.fn().mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({
+          result: "success",
+          presence_last_update_id: 8,
+          presences: { 2: { active_timestamp: Date.now() / 1000 } },
+        }),
+      ),
+  );
   vi.stubGlobal("fetch", fetch);
   const store = new LiveStore();
   store.register({ zulip_feature_level: 300 });
