@@ -339,7 +339,9 @@ export const MessageRow = memo(function MessageRow({
               account={account}
             />
           )}
-          <InteractiveMessage account={account} message={message} />
+          {!!message.submessages?.length && (
+            <InteractiveMessage account={account} message={message} />
+          )}
           <MessageActions
             account={account}
             message={message}

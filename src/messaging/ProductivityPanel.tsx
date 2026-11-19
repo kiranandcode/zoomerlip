@@ -111,7 +111,11 @@ export function ProductivityPanel({
     try {
       await work();
       if (!lifetime.current.signal.aborted) {
-        setStatus("Saved on the server.");
+        setStatus(
+          kind === "scheduled_messages"
+            ? "Saved on the server. The original composer draft is still present; do not send it again unless you intend a duplicate."
+            : "Saved on the server.",
+        );
         setEdit(null);
         await refresh();
       }
@@ -288,6 +292,7 @@ export function ProductivityPanel({
                 <label>
                   Content
                   <textarea
+                    aria-label="Content"
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     required

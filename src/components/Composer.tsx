@@ -1,3 +1,4 @@
+import { sendComposition } from "../messaging/send";
 import { WidgetComposer } from "../messaging/WidgetComposer";
 import { ProductivityPanel } from "../messaging/ProductivityPanel";
 import type { ProductivityKind } from "../messaging/productivity";
@@ -26,7 +27,6 @@ import {
 import type { Draft as StoredDraft } from "../messaging/drafts";
 import { getCache } from "../cache";
 import "../messaging/messaging.css";
-import { request } from "../api";
 import { sendsOnEnter, touchPrimary } from "../composerKeys";
 import type { Account, Message, View, User } from "../types";
 export type ComposerHandle = {
@@ -82,7 +82,8 @@ export const Composer = memo(
       alive = useRef(true),
       busy = useRef(false),
       operation = useRef(new AbortController()),
-      lastSaved = useRef(initial?.text ?? saved.text);
+      lastSaved = useRef(initial?.text ?? saved.text),
+      lastTopic = useRef(initial?.topic ?? saved.topic);
     function persist(nextText: string, nextTopic: string) {
       if (operation.current.signal.aborted) return;
       saved.text = nextText;
@@ -98,8 +99,10 @@ export const Composer = memo(
             updated: Date.now(),
           },
           lastSaved.current,
+          lastTopic.current,
         );
         lastSaved.current = nextText;
+        lastTopic.current = nextTopic;
       } catch (e) {
         onError(
           e instanceof Error
@@ -137,6 +140,7 @@ export const Composer = memo(
           setText(d.text);
           setTopic(d.topic);
           lastSaved.current = d.text;
+          lastTopic.current = d.topic;
         }
         setShowDrafts(false);
         onSelect(d.view);
@@ -169,10 +173,23 @@ export const Composer = memo(
           saved.text = "";
         }
       };
+      const sent = (e: Event) => {
+        const d = (e as CustomEvent).detail;
+        if (
+          d.accountId === account.id &&
+          d.destination === destinationKey(view)
+        ) {
+          if (saved.text === d.text) saved.text = "";
+          setText((current) => (current === d.text ? "" : current));
+          if (lastSaved.current === d.text) lastSaved.current = "";
+        }
+      };
+      window.addEventListener("zoomerlip-draft-sent", sent);
       window.addEventListener("zoomerlip-messaging-reset", reset);
       return () => {
         operation.current.abort();
         window.removeEventListener("zoomerlip-messaging-reset", reset);
+        window.removeEventListener("zoomerlip-draft-sent", sent);
         alive.current = false;
       };
     }, []);
@@ -230,21 +247,8 @@ export const Composer = memo(
       setSending(true);
       onError("");
       try {
-        await request(
-          account,
-          "/messages",
-          view.type === "channel"
-            ? {
-                type: "stream",
-                to: view.channelId,
-                topic: sentTopic,
-                content: sentText,
-              }
-            : { type: "private", to: view.userIds, content: sentText },
-          "POST",
-          operation.current.signal,
-        );
-        if (saved.text === sentText) persist("", sentTopic);
+        await sendComposition(account, view, sentText, sentTopic);
+        if (saved.text === sentText) saved.text = "";
         if (!alive.current) return;
         setText((current) => (current === sentText ? "" : current));
         onSent(sentTopic);
@@ -406,7 +410,12 @@ export const Composer = memo(
                 changeText(e.target.value);
               }}
               onKeyDown={(event) => {
-                if (completion.keydown(event)) return;
+                if (
+                  event.nativeEvent.isComposing ||
+                  event.keyCode === 229 ||
+                  completion.keydown(event)
+                )
+                  return;
                 if (
                   sendsOnEnter(
                     { ...event, isComposing: event.nativeEvent.isComposing },

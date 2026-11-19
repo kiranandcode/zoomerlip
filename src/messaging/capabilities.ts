@@ -5,6 +5,13 @@ export type MessagingCapabilities = {
   topicLength: number;
 };
 const values = new Map<string, MessagingCapabilities>();
+const streams = new Map<string, Set<number>>();
+export function setMessagingStreams(id: string, ids: number[]) {
+  streams.set(id, new Set(ids));
+}
+export function messagingStreamAllowed(id: string, stream: number) {
+  return !streams.has(id) || streams.get(id)!.has(stream);
+}
 export function setMessagingCapabilities(
   id: string,
   data: Record<string, unknown>,
@@ -31,4 +38,5 @@ export const messagingCapabilities = (id: string): MessagingCapabilities =>
   };
 export function clearMessagingCapabilities(id: string) {
   values.delete(id);
+  streams.delete(id);
 }

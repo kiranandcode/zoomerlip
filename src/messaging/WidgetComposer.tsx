@@ -47,6 +47,7 @@ export function WidgetComposer({
           <label>
             Type
             <select
+              aria-label="Type"
               value={kind}
               onChange={(e) => setKind(e.target.value as "poll" | "todo")}
             >

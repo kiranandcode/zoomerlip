@@ -1,3 +1,8 @@
+import { moveDrafts } from "../src/messaging/drafts";
+import {
+  setMessagingStreams,
+  clearMessagingCapabilities,
+} from "../src/messaging/capabilities";
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from "vitest";
 import {
@@ -107,4 +112,41 @@ it("retains drafts if quota or network fails", async () => {
     syncDrafts({ id: "one" } as never, new AbortController().signal),
   ).rejects.toThrow("offline");
   expect(listDrafts("one")[0].text).toBe(draft.text);
+});
+
+it("preserves conflicting topic edits and moves draft destinations", () => {
+  saveDraft("one", draft);
+  persistDraft(
+    "one",
+    { ...draft, topic: "new", text: draft.text },
+    draft.text,
+    "old",
+  );
+  expect(listDrafts("one")).toHaveLength(2);
+  clearDrafts("one");
+  saveDraft("one", draft);
+  moveDrafts("one", view, { type: "channel", channelId: 5, topic: "renamed" });
+  expect(
+    draftFor("one", { type: "channel", channelId: 5, topic: "renamed" })?.text,
+  ).toBe(draft.text);
+  expect(draftFor("one", view)).toBeUndefined();
+});
+it("does not import or upload drafts for channels outside current subscriptions", async () => {
+  setMessagingStreams("one", [5]);
+  vi.mocked(request).mockResolvedValue({
+    drafts: [
+      {
+        id: 1,
+        type: "stream",
+        to: [4],
+        topic: "secret",
+        content: "revoked",
+        timestamp: 1,
+      },
+    ],
+  });
+  await syncDrafts({ id: "one" } as never, new AbortController().signal);
+  expect(listDrafts("one")).toEqual([]);
+  expect(request).toHaveBeenCalledTimes(1);
+  clearMessagingCapabilities("one");
 });

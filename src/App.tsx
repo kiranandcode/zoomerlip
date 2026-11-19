@@ -1,3 +1,6 @@
+import { destinationKey, draftFor, saveDraft } from "./messaging/drafts";
+import type { Destination } from "./messaging/drafts";
+import { quoteMessage } from "./messaging/actions";
 import {
   memo,
   useCallback,
@@ -936,8 +939,50 @@ const Conversation = memo(function Conversation({
     [],
   );
   const quote = useCallback(
-    (message: Message, raw: string) => composer.current?.quote(message, raw),
-    [],
+    (message: Message, raw: string) => {
+      if (composer.current) {
+        composer.current.quote(message, raw);
+        return;
+      }
+      const target: Destination =
+        message.type === "stream" && message.stream_id !== undefined
+          ? {
+              type: "channel",
+              channelId: message.stream_id,
+              topic: message.subject,
+            }
+          : {
+              type: "dm",
+              userIds: Array.isArray(message.display_recipient)
+                ? message.display_recipient
+                    .map((u) => u.id)
+                    .filter((id) => id !== account.userId)
+                : [account.userId],
+            };
+      if (target.type === "dm" && !target.userIds.length)
+        target.userIds = [account.userId];
+      try {
+        const old = draftFor(account.id, target),
+          current = old?.text || cache.ui(target).text;
+        const text = `${current}${current ? "\n" : ""}${quoteMessage(account, message, raw)}`;
+        saveDraft(account.id, {
+          id: destinationKey(target),
+          view: target,
+          text,
+          topic: message.subject,
+          updated: Date.now(),
+        });
+        const saved = cache.ui(target);
+        saved.text = text;
+        saved.topic = message.subject;
+        onSelect(target);
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : "Could not save quote draft.",
+        );
+      }
+    },
+    [account, cache, onSelect],
   );
   const sent = useCallback(
     (topic: string) => {

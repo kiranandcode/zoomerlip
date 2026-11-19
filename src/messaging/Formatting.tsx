@@ -27,6 +27,17 @@ export function Formatting({
     setBusy(false);
     return () => control.current?.abort();
   }, [text]);
+  useEffect(() => {
+    const reset = (e: Event) => {
+      if ((e as CustomEvent).detail.accountId === account.id) {
+        control.current?.abort();
+        setHtml("");
+        setPreview(false);
+      }
+    };
+    window.addEventListener("zoomerlip-messaging-reset", reset);
+    return () => window.removeEventListener("zoomerlip-messaging-reset", reset);
+  }, [account.id]);
   const formats = [
     ["Bold", "**", "**"],
     ["Italic", "*", "*"],

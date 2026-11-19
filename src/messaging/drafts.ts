@@ -1,4 +1,5 @@
 import { request, ApiError } from "../api";
+import { messagingStreamAllowed } from "./capabilities";
 import type { Account, View } from "../types";
 
 export type Destination = Extract<View, { type: "channel" | "dm" }>;
@@ -8,6 +9,7 @@ export type Draft = {
   text: string;
   topic: string;
   updated: number;
+  serverId?: number;
 };
 const prefix = "zoomerlip.draft.v1.";
 export const MAX_DRAFTS = 100,
@@ -35,6 +37,7 @@ export function validDraft(d: unknown): d is Draft {
     p.topic.length <= 1000 &&
     !p.topic.includes("\0") &&
     Number.isFinite(p.updated) &&
+    (p.serverId === undefined || positive(p.serverId)) &&
     !!v &&
     (v.type === "channel"
       ? positive(v.channelId) &&
@@ -47,7 +50,7 @@ export function validDraft(d: unknown): d is Draft {
         v.userIds.every(positive))
   );
 }
-export function listDrafts(account: string): Draft[] {
+function readDraftRecords(account: string): Draft[] {
   const result: Draft[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
@@ -63,6 +66,13 @@ export function listDrafts(account: string): Draft[] {
     if (result.length >= MAX_DRAFTS) break;
   }
   return result.sort((a, b) => b.updated - a.updated);
+}
+export function listDrafts(account: string): Draft[] {
+  try {
+    return readDraftRecords(account);
+  } catch {
+    return [];
+  }
 }
 export function saveDraft(account: string, draft: Draft) {
   if (!validDraft(draft))
@@ -112,17 +122,54 @@ export function draftFor(account: string, view: Destination) {
   return listDrafts(account).find((d) => d.id === destinationKey(view));
 }
 // Preserve a second tab's version rather than overwriting it silently.
-export function persistDraft(account: string, draft: Draft, expected?: string) {
+export function persistDraft(
+  account: string,
+  draft: Draft,
+  expected?: string,
+  expectedTopic?: string,
+) {
   const old = listDrafts(account).find((d) => d.id === draft.id);
   if (
     old &&
     expected !== undefined &&
-    old.text !== expected &&
-    old.text !== draft.text
+    (old.text !== expected ||
+      (expectedTopic !== undefined && old.topic !== expectedTopic)) &&
+    (old.text !== draft.text || old.topic !== draft.topic)
   )
     saveDraft(account, { ...old, id: crypto.randomUUID() });
   if (draft.text.trim()) saveDraft(account, draft);
   else deleteDraft(account, draft.id);
+}
+export function moveDrafts(
+  account: string,
+  from: Extract<Destination, { type: "channel" }>,
+  to: Extract<Destination, { type: "channel" }>,
+) {
+  for (const d of listDrafts(account)) {
+    if (
+      d.view.type !== "channel" ||
+      d.view.channelId !== from.channelId ||
+      d.topic.toLowerCase() !== from.topic?.toLowerCase()
+    )
+      continue;
+    const view = {
+      ...to,
+      ...(d.view.topic === undefined ? { topic: undefined } : {}),
+    };
+    const canonical = d.id === destinationKey(d.view);
+    const id = canonical ? destinationKey(view) : d.id;
+    const old = listDrafts(account).find((d) => d.id === id);
+    const targetId =
+      old && old.id !== d.id && old.text !== d.text ? crypto.randomUUID() : id;
+    saveDraft(account, {
+      ...d,
+      id: targetId,
+      view,
+      topic: to.topic || "",
+      updated: Date.now(),
+    });
+    if (d.id !== targetId) deleteDraft(account, d.id);
+  }
 }
 type ServerDraft = {
   id: number;
@@ -154,8 +201,22 @@ export async function syncDrafts(account: Account, signal: AbortSignal) {
   }
   if (!Array.isArray(data.drafts) || data.drafts.length > MAX_DRAFTS)
     throw new Error("Too many server drafts. Manage them before syncing.");
+  if (
+    !data.drafts.every(
+      (d) =>
+        d &&
+        positive(d.id) &&
+        ["stream", "private"].includes(d.type) &&
+        Array.isArray(d.to) &&
+        (d.type !== "stream" || d.to.length === 1),
+    )
+  )
+    throw new Error(
+      "Server returned unsupported drafts. Local drafts are unchanged.",
+    );
   const remote: Draft[] = data.drafts.map((d) => ({
     id: `server:${d.id}`,
+    serverId: d.id,
     view:
       d.type === "stream"
         ? { type: "channel", channelId: d.to?.[0], topic: d.topic }
@@ -172,15 +233,25 @@ export async function syncDrafts(account: Account, signal: AbortSignal) {
     seen = new Set(local.map(fingerprint));
   for (const d of remote) {
     if (signal.aborted) return;
+    if (
+      d.view.type === "channel" &&
+      !messagingStreamAllowed(account.id, d.view.channelId)
+    )
+      continue;
     if (!seen.has(fingerprint(d))) {
       saveDraft(account.id, { ...d, id: crypto.randomUUID() });
       seen.add(fingerprint(d));
     }
   }
   const existing = new Set(remote.map(fingerprint));
-  const missing = local.filter((d) => !existing.has(fingerprint(d)));
-  if (missing.length && !signal.aborted)
-    await request(
+  const missing = local.filter(
+    (d) =>
+      !existing.has(fingerprint(d)) &&
+      (d.view.type !== "channel" ||
+        messagingStreamAllowed(account.id, d.view.channelId)),
+  );
+  if (missing.length && !signal.aborted) {
+    const created = await request<{ ids: number[] }>(
       account,
       "/drafts",
       {
@@ -195,4 +266,20 @@ export async function syncDrafts(account: Account, signal: AbortSignal) {
       "POST",
       signal,
     );
+    if (
+      !signal.aborted &&
+      Array.isArray(created.ids) &&
+      created.ids.length === missing.length
+    ) {
+      for (const [i, d] of missing.entries()) {
+        const current = listDrafts(account.id).find((v) => v.id === d.id);
+        if (
+          current &&
+          fingerprint(current) === fingerprint(d) &&
+          positive(created.ids[i])
+        )
+          saveDraft(account.id, { ...current, serverId: created.ids[i] });
+      }
+    }
+  }
 }

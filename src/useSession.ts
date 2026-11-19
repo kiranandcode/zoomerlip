@@ -1,4 +1,8 @@
-import { setMessagingCapabilities } from "./messaging/capabilities";
+import { listDrafts, clearDrafts } from "./messaging/drafts";
+import {
+  setMessagingCapabilities,
+  setMessagingStreams,
+} from "./messaging/capabilities";
 import { messagingEvent } from "./messaging/lifecycle";
 import { useEffect, useState } from "react";
 import { getCache } from "./cache";
@@ -123,7 +127,17 @@ export function useSession(account: Account, _active: boolean): Session {
             const registered = new Set(
               model.state.channels.map((c) => c.stream_id),
             );
+            const draftStreams = listDrafts(account.id).flatMap((d) =>
+              d.view.type === "channel" && !registered.has(d.view.channelId)
+                ? [d.view.channelId]
+                : [],
+            );
+            if (draftStreams.length) clearDrafts(account.id, draftStreams);
             cache.purgeStreams(previous.filter((id) => !registered.has(id)));
+            setMessagingStreams(
+              account.id,
+              model.state.channels.map((c) => c.stream_id),
+            );
             cache.allowStreams(model.state.channels.map((c) => c.stream_id));
             cache.setMutedUsers(model.state.mutedUsers);
             cache.invalidate();
@@ -157,6 +171,7 @@ export function useSession(account: Account, _active: boolean): Session {
           if (next.channels !== before.channels) {
             const subscribed = new Set(next.channels.map((c) => c.stream_id));
             cache.purgeStreams(previous.filter((id) => !subscribed.has(id)));
+            setMessagingStreams(account.id, [...subscribed]);
             cache.allowStreams([...subscribed]);
           }
           if (next.mutedUsers !== before.mutedUsers)

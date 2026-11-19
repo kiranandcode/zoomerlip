@@ -10,7 +10,7 @@
   border: 1px solid var(--border);
   border-radius: 0.35rem;
   color: inherit;
-  background: var(--bg);
+  background: var(--field);
 }
 .messaging-panel {
   padding: 0.75rem;
@@ -39,7 +39,7 @@
 .messaging-panel select {
   width: 100%;
   color: inherit;
-  background: var(--bg);
+  background: var(--field);
   border: 1px solid var(--border);
   padding: 0.45rem;
 }
@@ -57,7 +57,7 @@
 }
 .messaging-completions button {
   color: inherit;
-  background: var(--bg);
+  background: var(--field);
   padding: 0.5rem;
 }
 .messaging-completions [aria-selected="true"] {

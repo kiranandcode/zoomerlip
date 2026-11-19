@@ -36,3 +36,12 @@ it("formats only the selected range and keeps selection inside delimiters", () =
     end: 13,
   });
 });
+
+it("clamps a stale cursor after replacing the entire composition", () => {
+  expect(completionToken(":comp", 16)).toEqual({
+    kind: ":",
+    query: "comp",
+    start: 0,
+    end: 5,
+  });
+});

@@ -19,7 +19,17 @@ export function InteractiveMessage({
     locked = useRef(false);
   useEffect(() => {
     control.current = new AbortController();
-    return () => control.current.abort();
+    const reset = (e: Event) => {
+      if ((e as CustomEvent).detail.accountId === account.id) {
+        control.current.abort();
+        setError("Access changed. Reopen the conversation.");
+      }
+    };
+    window.addEventListener("zoomerlip-messaging-reset", reset);
+    return () => {
+      control.current.abort();
+      window.removeEventListener("zoomerlip-messaging-reset", reset);
+    };
   }, []);
   const parsed = useMemo(() => {
     try {

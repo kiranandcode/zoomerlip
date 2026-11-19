@@ -1,6 +1,7 @@
 import type { User } from "../types";
 export type Completion = { label: string; value: string };
 export function completionToken(text: string, cursor: number) {
+  cursor = Math.max(0, Math.min(cursor, text.length));
   const match = /(?:^|\s)([@:])([^\s@:]{0,80})$/.exec(text.slice(0, cursor));
   return match
     ? {

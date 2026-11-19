@@ -74,13 +74,24 @@ export function MessageActions({
     }
   }
   async function flag(flag: string, op: string) {
-    await request(
+    const result = await request<{
+      ignored_because_not_subscribed_channels?: number[];
+    }>(
       account,
       "/messages/flags",
       { messages: [message.id], flag, op },
       "POST",
       controller.current.signal,
     );
+    if (
+      flag === "read" &&
+      op === "remove" &&
+      message.stream_id !== undefined &&
+      result.ignored_because_not_subscribed_channels?.includes(
+        message.stream_id,
+      )
+    )
+      throw new Error("Join this channel before marking its messages unread.");
     if (!controller.current.signal.aborted) {
       getCache(account).events([
         {
@@ -103,7 +114,7 @@ export function MessageActions({
   return (
     <div className="messaging-extra-actions">
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        More message actions
+        Message tools
       </button>
       {open && (
         <section

@@ -3,6 +3,17 @@ import type { Account, ZulipEvent } from "../types";
 import { clearDrafts } from "./drafts";
 // UI modules subscribe to invalidation, not credentials or unbounded event history.
 export function messagingEvent(account: Account, events: ZulipEvent[]) {
+  events = events.filter((e) =>
+    [
+      "drafts",
+      "realm_emoji",
+      "scheduled_messages",
+      "saved_snippets",
+      "reminders",
+      "update_message",
+    ].includes(e.type),
+  );
+  if (!events.length) return;
   window.dispatchEvent(
     new CustomEvent("zoomerlip-messaging", {
       detail: { accountId: account.id, events },

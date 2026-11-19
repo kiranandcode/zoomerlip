@@ -49,3 +49,32 @@ References: [scheduled messages](https://zulip.com/api/get-scheduled-messages), 
 Productivity commit: `5d27486`. Added `/poll` and `/todo` draft builders, poll votes/unvotes, task completion toggles, new options/tasks and author-only title editing. POST `/submessage` payloads match upstream; message/submessage events are replayed by ID without duplicate toggles. History caps at 2,000 events / 256,000 characters and 1,000 options, with explicit fallback. Unknown widgets, invalid creators and unsupported servers do not expose broken controls. Conservative support floor: FL354, whose changelog explicitly documents the current submessage content-access behavior; older deployments get plain-text fallback.
 
 References: [submessage events](https://zulip.com/api/get-events#submessage), [API changelog](https://zulip.com/api/changelog), [REST routing](https://github.com/zulip/zulip/blob/main/zproject/urls.py), [submessage endpoint](https://github.com/zulip/zulip/blob/main/zerver/views/submessage.py), [widget creation](https://github.com/zulip/zulip/blob/main/zerver/lib/widget.py), [poll protocol](https://github.com/zulip/zulip/blob/main/web/src/poll_data.ts), [to-do protocol](https://github.com/zulip/zulip/blob/main/web/src/todo_data.ts). This remains an experimental upstream protocol, not a stable endpoint specification. Checks: 145 unit tests and production build passed.
+
+Interactive-message commit: `3a20ddf`.
+
+## Final integration and regression fixes
+
+All six messaging slices are implemented. This increment adds the intercepted messaging browser suite and README coverage, with these integration fixes:
+
+- Explicit sends survive navigation, preserving the baseline late-send behavior. Pending sends are bounded and deduplicated by account/destination. Account or channel revocation aborts them; reconnect never replays them. Acknowledgement clears only an unchanged durable draft.
+- The new action toggle is named “Message tools” to keep the existing mobile “Message actions” control unambiguous. Composer remains a textbox with accessible autocomplete. Cursor clamping and stale-selection guards prevent duplicate emoji text. Content and widget-type inputs have explicit labels.
+- Draft conflicts include topic changes. Topic moves migrate durable drafts without replacing a conflicting destination draft. Registration and sync exclude inaccessible channel drafts. Server-copy deletion is separately confirmed. Storage read failures preserve access to the editor; failed writes remain visible.
+- Account/access resets cancel previews, history, draft sync and productivity/widget requests. Event dispatch excludes unrelated events. Server productivity records are validated before rendering. Quote replies from views without a composer save a destination draft and navigate to it.
+- Messaging panels use existing theme variables. Shared integration remains limited to Composer/MessageRow, quote navigation, cache invalidation/topic moves, and session capability/event registration.
+
+Final verification: 2026-11-19, `Kirans-MacBook-Pro.local`, Node `22.23.3` at `/opt/homebrew/opt/node@22/bin`; 156 GiB free before browser runs. Built client served only at `http://127.0.0.1:4181`. Every organization request in browser suites was intercepted. No real organization writes occurred.
+
+| Check | Exact outcome |
+| --- | --- |
+| `npm run format:check` | Passed; all matched files use Prettier style. |
+| `npm test` | 151 tests passed across 22 files. |
+| `npm run build` | TypeScript and Vite production build passed. |
+| `scripts/test-ui.mjs` | Passed: 300-row typing isolation; keyboard navigation and focus; no-op edits; audience labels; 320px touch actions, picker fit and multiline Enter; dialog/drawer dismissal; late sends; 12 theme/accent contrast combinations; thread-menu keyboard/right-click, timed mute expiry and unread restoration. No external requests. |
+| `scripts/test-safety.mjs` | Passed: pre-existing/live mutes; private-channel revocation purges history, profiles and composer; terminal 401 clears history and locks composition; late authentication cannot activate a closed login; cross-tab account removal stops both sessions and prevents restoration. |
+| `scripts/test-scale.mjs` | Passed: 10,000 members; 25 initial DOM rows, 30 after scrolling; 75 ms from fixture response to visible member count. Scrolling and exact search passed. No external requests or page errors. |
+| `scripts/test-themes.mjs` | Passed: import/export, safe preview/recovery, session-only writes, retained drafts, deletion undo, conflicting editors, copy recovery and two-tab preservation. |
+| `scripts/test-messaging.mjs` | Passed: persistent drafts, keyboard autocomplete/IME, upload retry, sanitized preview, message actions, reminders, snippets, schedule failure/edit/failed-delivery state, live polls, to-do preparation, mobile layout and access revocation. |
+
+The four baseline browser suites and messaging suite exited 0 on the final build. Raw logs remain ignored in `test-results/messaging-final-{ui,safety,scale,themes,features}.log`. `git diff --check` passed.
+
+Handoff: worker B can use `DraftList` and `ProductivityPanel` for navigation. Preserve account-scoped `zoomerlip-messaging` and `zoomerlip-messaging-reset` events when integrating worker C's session changes. Android MIME picker changes and combined native checks belong to C/parent; this workstream did not modify Android. Physical-device testing remains waived. Server draft sync preserves snapshots; it is not automatic bidirectional replacement. Reminder rescheduling is non-atomic; tus resume is unavailable; widgets use an experimental upstream protocol. No deployment or branch push was performed.

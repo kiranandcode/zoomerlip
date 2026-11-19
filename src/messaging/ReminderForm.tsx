@@ -16,7 +16,18 @@ export function ReminderForm({
   const control = useRef(new AbortController());
   useEffect(() => {
     control.current = new AbortController();
-    return () => control.current.abort();
+    const reset = (e: Event) => {
+      if ((e as CustomEvent).detail.accountId === account.id) {
+        control.current.abort();
+        setNote("");
+        setWhen("");
+      }
+    };
+    window.addEventListener("zoomerlip-messaging-reset", reset);
+    return () => {
+      control.current.abort();
+      window.removeEventListener("zoomerlip-messaging-reset", reset);
+    };
   }, []);
   const level = messagingCapabilities(account.id).featureLevel;
   if (level < 381)

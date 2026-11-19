@@ -52,6 +52,8 @@ export async function listProductivity(
   if (!Array.isArray(items) || items.length > 1000)
     throw new Error("Invalid or oversized server list (maximum 1,000 items).");
   return items.map((item) => {
+    if (!item || typeof item !== "object")
+      throw new Error("Invalid server item.");
     const id =
       kind === "scheduled_messages"
         ? item.scheduled_message_id
@@ -64,6 +66,31 @@ export async function listProductivity(
       typeof item.content !== "string"
     )
       throw new Error("Invalid server item.");
+    if (
+      item.content.length > 100000 ||
+      (item.title !== undefined && typeof item.title !== "string") ||
+      (item.topic !== undefined && typeof item.topic !== "string")
+    )
+      throw new Error("Invalid server content.");
+    if (kind === "saved_snippets" && typeof item.title !== "string")
+      throw new Error("Invalid snippet title.");
+    if (kind !== "saved_snippets") {
+      const positive = (n: unknown) => Number.isSafeInteger(n) && Number(n) > 0;
+      if (
+        !Number.isFinite(item.scheduled_delivery_timestamp) ||
+        item.scheduled_delivery_timestamp < 0 ||
+        item.scheduled_delivery_timestamp > 8.64e12 ||
+        !(item.type === "stream"
+          ? positive(item.to)
+          : item.type === "private" &&
+            Array.isArray(item.to) &&
+            item.to.length <= 100 &&
+            item.to.every(positive)) ||
+        (item.failed !== undefined && typeof item.failed !== "boolean") ||
+        (kind === "reminders" && !positive(item.reminder_target_message_id))
+      )
+        throw new Error("Invalid scheduled item.");
+    }
     return { ...item, id };
   });
 }

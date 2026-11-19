@@ -1,3 +1,4 @@
+import { moveDrafts } from "./messaging/drafts";
 import { MAX_SUBMESSAGES, MAX_WIDGET_BYTES } from "./messaging/widgets";
 import { invalidateMessaging } from "./messaging/lifecycle";
 import { clearContentCache } from "./contentCache";
@@ -1054,6 +1055,11 @@ export class OrgCache {
       topic: typeof event.subject === "string" ? event.subject : from.topic,
     };
     if (from.channelId === to.channelId && from.topic === to.topic) return;
+    try {
+      moveDrafts(this.account.id, from, to);
+    } catch {
+      /* Quota failure retains the source draft for explicit restoration. */
+    }
     // Keep the unsent draft with its destination when navigation follows a rename.
     const source = this.entries.get(viewKey(from));
     if (source) {

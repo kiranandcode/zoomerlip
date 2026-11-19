@@ -58,10 +58,18 @@ export function useCompletion(
       )
         load();
     };
+    const reset = (e: Event) => {
+      if ((e as CustomEvent).detail.accountId === account.id) {
+        control.abort();
+        setEmoji([]);
+      }
+    };
+    window.addEventListener("zoomerlip-messaging-reset", reset);
     window.addEventListener("zoomerlip-messaging", update);
     return () => {
       control.abort();
       window.removeEventListener("zoomerlip-messaging", update);
+      window.removeEventListener("zoomerlip-messaging-reset", reset);
     };
   }, [account, needsEmoji]);
   const selected = Math.min(index, Math.max(0, options.length - 1));
@@ -73,6 +81,7 @@ export function useCompletion(
     setCursor(token.start + value.length);
     setIndex(0);
     requestAnimationFrame(() => {
+      if (input.current?.value !== next) return;
       input.current?.focus();
       input.current?.setSelectionRange(
         token.start + value.length,
@@ -112,9 +121,7 @@ export function useCompletion(
   return {
     keydown,
     props: {
-      role: "combobox" as const,
       "aria-autocomplete": "list" as const,
-      "aria-expanded": !!options.length,
       "aria-controls": options.length ? id : undefined,
       "aria-activedescendant": options.length ? `${id}-${selected}` : undefined,
       onSelect: () => {
