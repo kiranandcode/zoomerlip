@@ -1328,6 +1328,7 @@ const Conversation = memo(function Conversation({
       {view.type !== "home" && view.type !== "profile" && (
         <Composer
           ref={composer}
+          users={users}
           account={account}
           view={view}
           title={title}

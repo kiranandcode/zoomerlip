@@ -75,6 +75,7 @@ export function useSession(account: Account, _active: boolean): Session {
                   "delete_message",
                   "reaction",
                   "drafts",
+                  "realm_emoji",
                   "subscription",
                   "stream",
                   "realm_user",

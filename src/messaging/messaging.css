@@ -47,3 +47,20 @@
   display: block;
   margin: 0.4rem 0;
 }
+
+.messaging-completions {
+  display: flex;
+  flex-wrap: wrap;
+  max-height: 10rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+}
+.messaging-completions button {
+  color: inherit;
+  background: var(--bg);
+  padding: 0.5rem;
+}
+.messaging-completions [aria-selected="true"] {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}

@@ -21,3 +21,9 @@ Slice 1 checks: `npm test` — 128 passed; `npm run build` passed on Node 22. In
 Draft commit: `a76242f`. Attachments support file picker (`*/*` for worker C's native chooser), clipboard files and drop. Organization upload limits come from registration; missing/zero limits disable upload. Three concurrent files / 100 MiB retained-file budget. Indeterminate progress, cancellation, explicit retry and actionable failures. Links persist with the draft; sending waits for active uploads. Uses bounded `request`, redirect rejection, selected-account authentication and strict same-origin `/user_uploads/` response validation. Unmount/account invalidation cancels work. Cancellation can leave an unreferenced server upload; no automatic retry.
 
 References: [upload API](https://zulip.com/api/upload-file), [upstream upload implementation](https://github.com/zulip/zulip/blob/main/zerver/views/upload.py). Standard multipart endpoint; resumable tus uploads are not implemented. Tests: 131 unit tests and production build passed (Node 22).
+
+## Slice 3: composition
+
+Attachment commit: `e6db91b`. Added cursor-aware mention and emoji autocomplete, bounded suggestions, stable user-ID mentions and active organization emoji. Arrow keys, Enter/Tab and Escape control a labelled listbox; composition events and keyCode 229 preserve IME behavior. Existing mobile Enter behavior is retained. Formatting operates on the selected range. Explicit preview calls Zulip's renderer and passes results through the existing MessageContent sanitizer; edits abort stale previews.
+
+References: [render API](https://zulip.com/api/render-message), [custom emoji](https://zulip.com/api/get-custom-emoji), [upstream rendering](https://github.com/zulip/zulip/blob/main/zerver/views/message_send.py), [upstream emoji](https://github.com/zulip/zulip/blob/main/zerver/views/realm_emoji.py). Checks: 134 unit tests and production build passed. Browser checks follow after remaining UI slices.

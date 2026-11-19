@@ -1,3 +1,5 @@
+import { useCompletion } from "../messaging/useCompletion";
+import { Formatting } from "../messaging/Formatting";
 import { useAttachments } from "../messaging/useAttachments";
 import { messagingCapabilities } from "../messaging/capabilities";
 import {
@@ -22,7 +24,7 @@ import { getCache } from "../cache";
 import "../messaging/messaging.css";
 import { request } from "../api";
 import { sendsOnEnter, touchPrimary } from "../composerKeys";
-import type { Account, Message, View } from "../types";
+import type { Account, Message, View, User } from "../types";
 export type ComposerHandle = {
   reply: (message: Message) => void;
   focus: () => void;
@@ -34,6 +36,7 @@ export const Composer = memo(
     ComposerHandle,
     {
       account: Account;
+      users: User[];
       view: ChatView;
       title: string;
       privateChannel: boolean;
@@ -43,7 +46,17 @@ export const Composer = memo(
       onError: (error: string) => void;
     }
   >(function Composer(
-    { account, view, title, privateChannel, saved, onSelect, onSent, onError },
+    {
+      account,
+      users,
+      view,
+      title,
+      privateChannel,
+      saved,
+      onSelect,
+      onSent,
+      onError,
+    },
     ref,
   ) {
     const [initial] = useState(() => {
@@ -98,6 +111,7 @@ export const Composer = memo(
       onError,
     );
     const limits = messagingCapabilities(account.id);
+    const completion = useCompletion(account, users, text, input, changeText);
     function restore(d: StoredDraft) {
       try {
         if (text.trim())
@@ -269,6 +283,13 @@ export const Composer = memo(
           />
         )}
         {attachments.status}
+        <Formatting
+          account={account}
+          text={text}
+          input={input}
+          onChange={changeText}
+        />
+        {completion.list}
         <form
           className="composer"
           onSubmit={(event) => {
@@ -302,6 +323,7 @@ export const Composer = memo(
           <div className="compose-row">
             <textarea
               ref={input}
+              {...completion.props}
               id="message-composer"
               aria-label="Message"
               rows={1}
@@ -318,6 +340,7 @@ export const Composer = memo(
                 changeText(e.target.value);
               }}
               onKeyDown={(event) => {
+                if (completion.keydown(event)) return;
                 if (
                   sendsOnEnter(
                     { ...event, isComposing: event.nativeEvent.isComposing },
