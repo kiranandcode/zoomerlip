@@ -1,4 +1,4 @@
-import { narrow, request } from "./api";
+import { ApiError, narrow, request } from "./api";
 import type {
   Account,
   Message,
@@ -11,6 +11,7 @@ import type {
 export const CACHE_TTL = 60_000;
 const MAX_VIEWS = 24;
 const MAX_MESSAGES = 300;
+const MAX_JOURNAL = 2000;
 export type MessageSnapshot = {
   messages: Message[];
   loading: boolean;
@@ -24,9 +25,40 @@ type Entry = {
   view: View;
   snapshot: MessageSnapshot;
   listeners: Set<() => void>;
+  version: number;
   pending?: Promise<void>;
   controller?: AbortController;
+  olderPending?: Promise<void>;
+  olderController?: AbortController;
 };
+type Flight = {
+  controller: AbortController;
+  generation: number;
+  started: number;
+};
+type TopicFlight = Flight & { revision: number; promise: Promise<Topic[]> };
+const emptySnapshot = (): MessageSnapshot => ({
+  messages: [],
+  loading: false,
+  error: "",
+  hasOlder: false,
+  updatedAt: 0,
+  stale: true,
+});
+const sameTopic = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+const viewKey = (view: View) => JSON.stringify(view);
+const messageIds = (event: ZulipEvent) =>
+  new Set(
+    Array.isArray(event.message_ids)
+      ? (event.message_ids as number[])
+      : typeof event.message_id === "number"
+        ? [event.message_id]
+        : [],
+  );
+const isMove = (event: ZulipEvent) =>
+  event.type === "update_message" &&
+  (event.subject !== undefined || event.new_stream_id !== undefined);
+
 export function matchesView(message: Message, view: View, me: number): boolean {
   if (view.type === "profile")
     return (
@@ -37,8 +69,7 @@ export function matchesView(message: Message, view: View, me: number): boolean {
     return (
       message.type === "stream" &&
       message.stream_id === view.channelId &&
-      (view.topic === undefined ||
-        message.subject.toLowerCase() === view.topic.toLowerCase())
+      (view.topic === undefined || sameTopic(message.subject, view.topic))
     );
   if (message.type !== "private") return false;
   if (view.type === "home") return true;
@@ -51,11 +82,31 @@ export function matchesView(message: Message, view: View, me: number): boolean {
       .join(",") === ids.join(",")
   );
 }
+function editedMessage(message: Message, event: ZulipEvent): Message {
+  return {
+    ...message,
+    ...(typeof event.rendered_content === "string" &&
+    message.id === event.message_id
+      ? {
+          content: event.rendered_content,
+          rendered_content: event.rendered_content,
+        }
+      : {}),
+    ...(typeof event.subject === "string" ? { subject: event.subject } : {}),
+    ...(typeof event.new_stream_id === "number"
+      ? { stream_id: event.new_stream_id }
+      : {}),
+    ...(Array.isArray(event.flags) && message.id === event.message_id
+      ? { flags: event.flags as string[] }
+      : {}),
+  };
+}
 export function applyMessageEvent(
   messages: Message[],
   event: ZulipEvent,
   view: View,
   me: number,
+  ids = messageIds(event),
 ): Message[] {
   if (
     event.type === "message" &&
@@ -66,15 +117,15 @@ export function applyMessageEvent(
       ...event.message,
       reactions: event.message.reactions || [],
     };
+    // Events normally arrive in increasing message order. Avoid sorting that path.
+    if (!messages.length || messages[messages.length - 1].id < message.id)
+      return [...messages, message];
     if (messages.some((m) => m.id === message.id)) return messages;
     return [...messages, message].sort((a, b) => a.id - b.id);
   }
-  const ids = Array.isArray(event.message_ids)
-    ? (event.message_ids as number[])
-    : [event.message_id as number];
-  if (!messages.some((m) => ids.includes(m.id))) return messages;
+  if (!messages.some((m) => ids.has(m.id))) return messages;
   if (event.type === "delete_message")
-    return messages.filter((m) => !ids.includes(m.id));
+    return messages.filter((m) => !ids.has(m.id));
   if (event.type === "reaction")
     return messages.map((m) => {
       if (m.id !== event.message_id) return m;
@@ -99,45 +150,103 @@ export function applyMessageEvent(
     });
   if (event.type === "update_message")
     return messages
-      .map((m) => {
-        if (!ids.includes(m.id)) return m;
-        return {
-          ...m,
-          ...(typeof event.rendered_content === "string" &&
-          m.id === event.message_id
-            ? {
-                content: event.rendered_content,
-                rendered_content: event.rendered_content,
-              }
-            : {}),
-          ...(typeof event.subject === "string"
-            ? { subject: event.subject }
-            : {}),
-          ...(typeof event.new_stream_id === "number"
-            ? { stream_id: event.new_stream_id }
-            : {}),
-        };
-      })
+      .map((m) => (ids.has(m.id) ? editedMessage(m, event) : m))
       .filter((m) => matchesView(m, view, me));
   return messages;
 }
 
-/** Bounded, account-scoped memory cache. Never stores API keys or signed URLs on disk. */
+/** Account-scoped memory only. Every asynchronous write checks its generation. */
 export class OrgCache {
   private entries = new Map<string, Entry>();
   private journal: { seq: number; event: ZulipEvent }[] = [];
   private sequence = 0;
+  private generation = 0;
+  private locked = false;
+  private mutedUsers = new Set<number>();
+  private blockedStreams = new Set<number>();
   private topicData = new Map<number, { topics: Topic[]; time: number }>();
-  private topicPending = new Map<number, Promise<Topic[]>>();
+  private topicPending = new Map<number, TopicFlight>();
+  private topicRevisions = new Map<number, number>();
   private topicListeners = new Set<() => void>();
   private topicVersion = 0;
-  private controllers = new Set<AbortController>();
+  private navigationListeners = new Set<() => void>();
+  private navigationVersion = 0;
+  private moves: {
+    from: Extract<View, { type: "channel" }>;
+    to: Extract<View, { type: "channel" }>;
+  }[] = [];
   constructor(private account: Account) {}
+  private allowed(view: View) {
+    return (
+      !this.locked &&
+      !(view.type === "channel" && this.blockedStreams.has(view.channelId)) &&
+      !(view.type === "profile" && this.mutedUsers.has(view.userId))
+    );
+  }
+  private visible(message: Message) {
+    return (
+      !this.locked &&
+      !this.mutedUsers.has(message.sender_id) &&
+      !(
+        message.stream_id !== undefined &&
+        this.blockedStreams.has(message.stream_id)
+      )
+    );
+  }
+  private filter(messages: Message[]) {
+    return messages.filter((m) => this.visible(m));
+  }
+  private current(flight: Flight) {
+    return (
+      !flight.controller.signal.aborted &&
+      flight.generation === this.generation &&
+      !this.locked
+    );
+  }
+  private replayAvailable(started: number) {
+    return started >= this.sequence - this.journal.length;
+  }
+  private replay(messages: Message[], started: number, view: View) {
+    for (const item of this.journal)
+      if (item.seq > started)
+        messages = applyMessageEvent(
+          messages,
+          item.event,
+          view,
+          this.account.userId,
+        );
+    return this.filter(messages);
+  }
+  private cancelEntry(e: Entry) {
+    e.version++;
+    e.controller?.abort();
+    e.olderController?.abort();
+    e.pending = undefined;
+    e.olderPending = undefined;
+  }
+  private cancelRequests() {
+    this.generation++;
+    for (const e of this.entries.values()) this.cancelEntry(e);
+    for (const flight of this.topicPending.values()) flight.controller.abort();
+    this.topicPending.clear();
+    this.journal = [];
+  }
+  private trim(e: Entry) {
+    if (!e.listeners.size && e.snapshot.messages.length > MAX_MESSAGES) {
+      e.snapshot = {
+        ...e.snapshot,
+        messages: e.snapshot.messages.slice(-MAX_MESSAGES),
+        hasOlder: true,
+      };
+      e.ui.scrollTop = 0;
+      e.ui.atBottom = true;
+    }
+  }
   entry(view: View): Entry {
-    const key = JSON.stringify(view);
-    let entry = this.entries.get(key);
-    if (!entry) {
-      entry = {
+    const key = viewKey(view);
+    let e = this.entries.get(key);
+    if (!e) {
+      e = {
         view,
         ui: {
           text: "",
@@ -145,34 +254,25 @@ export class OrgCache {
           scrollTop: 0,
           atBottom: true,
         },
-        snapshot: {
-          messages: [],
-          loading: false,
-          error: "",
-          hasOlder: false,
-          updatedAt: 0,
-          stale: true,
-        },
+        snapshot: emptySnapshot(),
         listeners: new Set(),
+        version: 0,
       };
-      this.entries.set(key, entry);
+      this.entries.set(key, e);
     }
-    for (const [k, e] of this.entries)
-      if (
-        this.entries.size > MAX_VIEWS &&
-        e.listeners.size === 0 &&
-        k !== key
-      ) {
-        e.controller?.abort();
+    for (const [k, entry] of this.entries)
+      if (this.entries.size > MAX_VIEWS && !entry.listeners.size && k !== key) {
+        this.cancelEntry(entry);
         this.entries.delete(k);
       }
-    return entry;
+    return e;
   }
   subscribe(view: View, listener: () => void) {
     const e = this.entry(view);
     e.listeners.add(listener);
     return () => {
       e.listeners.delete(listener);
+      this.trim(e);
     };
   }
   ui(view: View) {
@@ -181,31 +281,146 @@ export class OrgCache {
   snapshot(view: View) {
     return this.entry(view).snapshot;
   }
-  private publish(entry: Entry, patch: Partial<MessageSnapshot>) {
-    entry.snapshot = { ...entry.snapshot, ...patch };
-    entry.listeners.forEach((fn) => fn());
+  private publish(e: Entry, patch: Partial<MessageSnapshot>) {
+    e.snapshot = { ...e.snapshot, ...patch };
+    this.trim(e);
+    for (const fn of e.listeners) fn();
+  }
+  private clearEntry(e: Entry, error = "") {
+    this.cancelEntry(e);
+    e.ui.text = "";
+    e.ui.topic = e.view.type === "channel" ? e.view.topic || "" : "";
+    e.ui.scrollTop = 0;
+    e.ui.atBottom = true;
+    this.publish(e, { ...emptySnapshot(), error });
+  }
+  private denied(error: unknown, view: View): boolean {
+    if (!(error instanceof ApiError)) return false;
+    if (error.status === 401) {
+      this.lock();
+      return true;
+    }
+    if (
+      error.status === 403 ||
+      error.status === 404 ||
+      (view.type === "channel" && error.status === 400)
+    ) {
+      if (view.type === "channel") this.purgeStreams([view.channelId]);
+      else {
+        this.cancelRequests();
+        for (const e of this.entries.values()) this.clearEntry(e);
+        this.topicData.clear();
+        this.notifyTopics();
+      }
+      return true;
+    }
+    return false;
   }
   load(view: View, force = false): Promise<void> {
-    const e = this.entry(view);
-    const key = JSON.stringify(view);
+    const e = this.entry(view),
+      key = viewKey(view);
+    if (!this.allowed(view)) {
+      this.clearEntry(e);
+      return Promise.resolve();
+    }
     this.entries.delete(key);
     this.entries.set(key, e);
     if (e.pending && !force) return e.pending;
-    if (e.pending) {
-      e.controller?.abort();
-      e.pending = undefined;
-    }
     if (
       !force &&
       !e.snapshot.stale &&
       Date.now() - e.snapshot.updatedAt < CACHE_TTL
     )
       return Promise.resolve();
-    const controller = new AbortController();
-    e.controller = controller;
-    const started = this.sequence;
+    this.cancelEntry(e);
+    const version = e.version;
+    const flight: Flight = {
+      controller: new AbortController(),
+      generation: this.generation,
+      started: this.sequence,
+    };
+    e.controller = flight.controller;
     this.publish(e, { loading: true, error: "" });
+    const valid = () =>
+      this.current(flight) &&
+      e.version === version &&
+      this.entries.get(key) === e;
     e.pending = (async () => {
+      try {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          flight.started = this.sequence;
+          const data = await request<{
+            messages: Message[];
+            found_oldest: boolean;
+          }>(
+            this.account,
+            "/messages",
+            {
+              anchor: "newest",
+              num_before: 60,
+              num_after: 0,
+              narrow: narrow(view),
+              apply_markdown: true,
+            },
+            "GET",
+            flight.controller.signal,
+          );
+          if (!valid()) return;
+          // Never apply a response if its replay window has been discarded.
+          if (!this.replayAvailable(flight.started)) continue;
+          this.publish(e, {
+            messages: this.replay(data.messages, flight.started, view),
+            hasOlder: !data.found_oldest,
+            updatedAt: Date.now(),
+            loading: false,
+            stale: false,
+          });
+          return;
+        }
+        throw new Error(
+          "Messages changed too quickly to reconcile. Reload this view.",
+        );
+      } catch (error) {
+        if (valid()) {
+          const accessDenied = this.denied(error, view);
+          this.publish(e, {
+            loading: false,
+            stale: true,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Could not load messages.",
+            ...(accessDenied ? { messages: [], hasOlder: false } : {}),
+          });
+        }
+      } finally {
+        if (e.controller === flight.controller) e.pending = undefined;
+      }
+    })();
+    return e.pending;
+  }
+  async older(view: View): Promise<void> {
+    const e = this.entry(view);
+    if (!this.allowed(view)) return;
+    if (e.pending) await e.pending;
+    if (e.olderPending) return e.olderPending;
+    const first = e.snapshot.messages[0];
+    if (!first || !this.allowed(view)) return;
+    const version = e.version,
+      key = viewKey(view),
+      anchor = first.id;
+    const flight: Flight = {
+      controller: new AbortController(),
+      generation: this.generation,
+      started: this.sequence,
+    };
+    e.olderController = flight.controller;
+    const valid = () =>
+      this.current(flight) &&
+      e.version === version &&
+      this.entries.get(key) === e &&
+      e.snapshot.messages[0]?.id === anchor;
+    e.olderPending = (async () => {
       try {
         const data = await request<{
           messages: Message[];
@@ -214,251 +429,335 @@ export class OrgCache {
           this.account,
           "/messages",
           {
-            anchor: "newest",
+            anchor,
+            include_anchor: false,
             num_before: 60,
             num_after: 0,
             narrow: narrow(view),
             apply_markdown: true,
           },
           "GET",
-          controller.signal,
+          flight.controller.signal,
         );
-        let messages = data.messages;
-        for (const item of this.journal)
-          if (item.seq > started)
-            messages = applyMessageEvent(
-              messages,
-              item.event,
-              view,
-              this.account.userId,
-            );
-        if (controller.signal.aborted) return;
-        this.publish(e, {
-          messages,
-          hasOlder: !data.found_oldest,
-          updatedAt: Date.now(),
-          loading: false,
-          stale: false,
-        });
+        if (!valid()) return;
+        if (!this.replayAvailable(flight.started)) {
+          await this.load(view, true);
+          return;
+        }
+        const older = this.replay(data.messages, flight.started, view),
+          known = new Set(e.snapshot.messages.map((m) => m.id));
+        const merged = [
+          ...older.filter((m) => !known.has(m.id)),
+          ...e.snapshot.messages,
+        ].sort((a, b) => a.id - b.id);
+        this.publish(e, { messages: merged, hasOlder: !data.found_oldest });
       } catch (error) {
-        if (!controller.signal.aborted)
-          this.publish(e, {
-            loading: false,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Could not load messages.",
-          });
+        if (valid()) {
+          this.denied(error, view);
+          throw error;
+        }
       } finally {
-        if (e.controller === controller) e.pending = undefined;
+        if (e.olderController === flight.controller) e.olderPending = undefined;
       }
     })();
-    return e.pending;
-  }
-  async older(view: View) {
-    const e = this.entry(view);
-    if (e.pending) await e.pending;
-    const first = e.snapshot.messages[0];
-    if (!first) return;
-    const controller = new AbortController();
-    this.controllers.add(controller);
-    const started = this.sequence;
-    try {
-      const data = await request<{
-        messages: Message[];
-        found_oldest: boolean;
-      }>(
-        this.account,
-        "/messages",
-        {
-          anchor: first.id,
-          include_anchor: false,
-          num_before: 60,
-          num_after: 0,
-          narrow: narrow(view),
-          apply_markdown: true,
-        },
-        "GET",
-        controller.signal,
-      );
-      let older = data.messages;
-      for (const item of this.journal)
-        if (item.seq > started)
-          older = applyMessageEvent(
-            older,
-            item.event,
-            view,
-            this.account.userId,
-          );
-      const merged = [
-        ...older.filter(
-          (m) => !e.snapshot.messages.some((old) => old.id === m.id),
-        ),
-        ...e.snapshot.messages,
-      ];
-      this.publish(e, { messages: merged, hasOlder: !data.found_oldest });
-    } finally {
-      this.controllers.delete(controller);
-    }
+    return e.olderPending;
   }
   events(events: ZulipEvent[]) {
+    if (this.locked) return;
     let movedHistory = false;
     for (const event of events) {
       this.journal.push({ seq: ++this.sequence, event });
-      // A move can bring a known message into another cached conversation.
-      const moved =
-        event.type === "update_message" &&
-        (event.subject !== undefined || event.new_stream_id !== undefined);
+      const moved = isMove(event),
+        ids = messageIds(event);
       movedHistory ||= moved;
-      const known = moved
-        ? [
-            ...new Map(
-              [...this.entries.values()]
-                .flatMap((e) => e.snapshot.messages)
-                .map((m) => [m.id, m]),
-            ).values(),
-          ]
-        : [];
+      // Transform each affected known message once, not every message per view.
+      const known = new Map<number, Message>();
+      if (moved)
+        for (const entry of this.entries.values())
+          for (const m of entry.snapshot.messages)
+            if (ids.has(m.id) && !known.has(m.id))
+              known.set(m.id, editedMessage(m, event));
       for (const entry of [...this.entries.values()]) {
         let messages = applyMessageEvent(
           entry.snapshot.messages,
           event,
           entry.view,
           this.account.userId,
+          ids,
         );
         if (moved)
-          for (const m of known) {
-            const updated = applyMessageEvent(
-              [m],
-              event,
-              { type: "profile", userId: m.sender_id, posts: "all" },
-              this.account.userId,
-            )[0];
+          for (const message of known.values())
             if (
-              updated &&
-              updated !== m &&
-              matchesView(updated, entry.view, this.account.userId)
+              this.visible(message) &&
+              matchesView(message, entry.view, this.account.userId)
             )
               messages = applyMessageEvent(
                 messages,
-                { id: event.id, type: "message", message: updated },
+                { id: event.id, type: "message", message },
                 entry.view,
                 this.account.userId,
               );
-          }
+        // Avoid rebuilding snapshots when an event concerns only a muted sender.
         if (messages !== entry.snapshot.messages) {
-          const trimmed =
-            entry.listeners.size === 0 && messages.length > MAX_MESSAGES;
-          this.publish(entry, {
-            messages: trimmed ? messages.slice(-MAX_MESSAGES) : messages,
-            hasOlder: trimmed || entry.snapshot.hasOlder,
-          });
+          messages = this.filter(messages);
+          if (
+            messages.length !== entry.snapshot.messages.length ||
+            messages.some((m, i) => m !== entry.snapshot.messages[i])
+          )
+            this.publish(entry, { messages });
         }
       }
+      if (moved) this.recordMove(event);
       if (
         event.type === "message" &&
         event.message?.type === "stream" &&
-        event.message.stream_id
+        event.message.stream_id !== undefined &&
+        this.visible(event.message)
       ) {
         const m = event.message,
-          id = m.stream_id!;
-        const cached = this.topicData.get(id);
+          id = m.stream_id!,
+          cached = this.topicData.get(id);
         if (cached) {
           cached.topics = [
             { name: m.subject, max_id: m.id },
-            ...cached.topics.filter(
-              (t) => t.name.toLowerCase() !== m.subject.toLowerCase(),
-            ),
+            ...cached.topics.filter((t) => !sameTopic(t.name, m.subject)),
           ];
           this.notifyTopics();
         }
       }
       if (moved || event.type === "delete_message") {
-        // Moves/deletions can remove the last message in a topic.
-        for (const [id, value] of this.topicData)
+        const channels = new Set([
+          ...this.topicData.keys(),
+          ...this.topicPending.keys(),
+        ]);
+        for (const id of channels)
           if (
             event.stream_id === undefined ||
             id === event.stream_id ||
             id === event.new_stream_id
           )
-            value.time = 0;
-        if (moved || event.type === "delete_message") this.notifyTopics();
+            this.invalidateTopics(id);
+        this.notifyTopics();
       }
     }
-    this.journal = this.journal.slice(-2000);
-    if (movedHistory) {
-      // A move may include messages never loaded in this client. Reconcile those
-      // from the server; ordinary messages, edits and reactions need no fetch.
-      for (const entry of [...this.entries.values()]) {
-        this.publish(entry, { stale: true });
-        if (entry.listeners.size) void this.load(entry.view, true);
+    this.journal = this.journal.slice(-MAX_JOURNAL);
+    if (movedHistory)
+      for (const e of [...this.entries.values()]) {
+        this.publish(e, { stale: true });
+        if (e.listeners.size) void this.load(e.view, true);
       }
-    }
+  }
+  private invalidateTopics(id: number) {
+    this.topicRevisions.set(id, (this.topicRevisions.get(id) || 0) + 1);
+    const cached = this.topicData.get(id);
+    if (cached) cached.time = 0;
   }
   invalidate() {
+    this.cancelRequests();
     for (const e of [...this.entries.values()]) {
-      e.controller?.abort();
-      e.pending = undefined;
       this.publish(e, { stale: true, loading: false });
-      if (e.listeners.size) void this.load(e.view, true);
+      if (e.listeners.size && this.allowed(e.view))
+        void this.load(e.view, true);
     }
     for (const topic of this.topicData.values()) topic.time = 0;
     this.notifyTopics();
   }
   peekTopics(id: number) {
-    return this.topicData.get(id)?.topics;
+    return this.locked || this.blockedStreams.has(id)
+      ? undefined
+      : this.topicData.get(id)?.topics;
   }
   topics(id: number): Promise<Topic[]> {
+    if (this.locked || this.blockedStreams.has(id)) return Promise.resolve([]);
     const cached = this.topicData.get(id);
     if (cached && Date.now() - cached.time < 5 * CACHE_TTL)
       return Promise.resolve(cached.topics);
     const pending = this.topicPending.get(id);
-    if (pending) return pending;
-    const controller = new AbortController();
-    this.controllers.add(controller);
-    const started = this.sequence;
-    const p = request<{ topics: Topic[] }>(
-      this.account,
-      `/users/me/${id}/topics`,
-      {},
-      "GET",
-      controller.signal,
-    )
-      .then((data) => {
-        let topics = data.topics;
-        let time = Date.now();
-        for (const { seq, event } of this.journal) {
-          if (seq <= started) continue;
-          if (event.type === "message" && event.message?.stream_id === id) {
-            const m = event.message;
-            topics = [
-              { name: m.subject, max_id: m.id },
-              ...topics.filter(
-                (t) => t.name.toLowerCase() !== m.subject.toLowerCase(),
-              ),
-            ];
-          }
+    if (pending) return pending.promise;
+    const flight: TopicFlight = {
+      controller: new AbortController(),
+      generation: this.generation,
+      started: this.sequence,
+      revision: this.topicRevisions.get(id) || 0,
+      promise: Promise.resolve([]),
+    };
+    flight.promise = (async () => {
+      try {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          flight.started = this.sequence;
+          flight.revision = this.topicRevisions.get(id) || 0;
+          const data = await request<{ topics: Topic[] }>(
+            this.account,
+            `/users/me/${id}/topics`,
+            {},
+            "GET",
+            flight.controller.signal,
+          );
+          if (!this.current(flight))
+            return this.locked || this.blockedStreams.has(id)
+              ? []
+              : this.topics(id);
           if (
-            event.type === "delete_message" ||
-            (event.type === "update_message" &&
-              (event.subject !== undefined ||
-                event.new_stream_id !== undefined))
+            !this.replayAvailable(flight.started) ||
+            flight.revision !== (this.topicRevisions.get(id) || 0)
           )
-            time = 0;
+            continue;
+          let topics = data.topics;
+          for (const { seq, event } of this.journal)
+            if (
+              seq > flight.started &&
+              event.type === "message" &&
+              event.message?.stream_id === id &&
+              this.visible(event.message)
+            ) {
+              const m = event.message;
+              topics = [
+                { name: m.subject, max_id: m.id },
+                ...topics.filter((t) => !sameTopic(t.name, m.subject)),
+              ];
+            }
+          this.topicData.set(id, { topics, time: Date.now() });
+          return topics;
         }
-        this.topicData.set(id, { topics, time });
-        return topics;
-      })
-      .finally(() => {
-        this.topicPending.delete(id);
-        this.controllers.delete(controller);
+        throw new Error(
+          "Topics changed too quickly to reconcile. Reopen this channel.",
+        );
+      } catch (error) {
+        if (!this.current(flight))
+          return this.locked || this.blockedStreams.has(id)
+            ? []
+            : this.topics(id);
+        this.denied(error, { type: "channel", channelId: id });
+        throw error;
+      } finally {
+        if (this.topicPending.get(id) === flight) this.topicPending.delete(id);
+      }
+    })();
+    this.topicPending.set(id, flight);
+    return flight.promise;
+  }
+  setMutedUsers(ids: number[]) {
+    const next = new Set(ids);
+    if (
+      next.size === this.mutedUsers.size &&
+      [...next].every((id) => this.mutedUsers.has(id))
+    )
+      return;
+    this.mutedUsers = next;
+    this.cancelRequests();
+    for (const e of [...this.entries.values()]) {
+      this.publish(e, {
+        messages: this.filter(e.snapshot.messages),
+        stale: true,
+        loading: false,
       });
-    this.topicPending.set(id, p);
-    return p;
+      if (e.view.type === "profile" && next.has(e.view.userId)) e.ui.text = "";
+      if (e.listeners.size && this.allowed(e.view))
+        void this.load(e.view, true);
+    }
+    this.notifyNavigation();
+    this.notifyTopics();
+  }
+  purgeStreams(ids: number[]) {
+    const removed = new Set(ids);
+    if (!removed.size) return;
+    for (const id of removed) {
+      this.blockedStreams.add(id);
+      this.topicData.delete(id);
+      this.topicRevisions.delete(id);
+    }
+    this.cancelRequests();
+    this.moves = this.moves.filter(
+      (m) => !removed.has(m.from.channelId) && !removed.has(m.to.channelId),
+    );
+    for (const e of this.entries.values()) {
+      if (e.view.type === "channel" && removed.has(e.view.channelId))
+        this.clearEntry(e);
+      else
+        this.publish(e, {
+          messages: this.filter(e.snapshot.messages),
+          loading: false,
+          stale: true,
+        });
+    }
+    this.notifyTopics();
+    this.notifyNavigation();
+    for (const e of [...this.entries.values()])
+      if (e.listeners.size && this.allowed(e.view))
+        void this.load(e.view, true);
+  }
+  allowStreams(ids: number[]) {
+    let changed = false;
+    for (const id of ids) changed = this.blockedStreams.delete(id) || changed;
+    if (changed) this.notifyNavigation();
+  }
+  lock() {
+    this.locked = true;
+    this.cancelRequests();
+    this.topicData.clear();
+    this.topicRevisions.clear();
+    this.moves = [];
+    for (const e of this.entries.values()) this.clearEntry(e);
+    this.notifyTopics();
+    this.notifyNavigation();
+  }
+  unlock() {
+    if (this.locked) {
+      this.locked = false;
+      this.notifyNavigation();
+    }
+  }
+  private recordMove(event: ZulipEvent) {
+    if (
+      event.propagate_mode !== "change_all" ||
+      typeof event.stream_id !== "number" ||
+      typeof event.orig_subject !== "string"
+    )
+      return;
+    const from: Extract<View, { type: "channel" }> = {
+      type: "channel",
+      channelId: event.stream_id,
+      topic: event.orig_subject,
+    };
+    const to: Extract<View, { type: "channel" }> = {
+      type: "channel",
+      channelId:
+        typeof event.new_stream_id === "number"
+          ? event.new_stream_id
+          : from.channelId,
+      topic: typeof event.subject === "string" ? event.subject : from.topic,
+    };
+    if (from.channelId === to.channelId && from.topic === to.topic) return;
+    // Keep the unsent draft with its destination when navigation follows a rename.
+    const source = this.entries.get(viewKey(from));
+    if (source) {
+      const target = this.entry(to);
+      if (!target.ui.text) {
+        target.ui.text = source.ui.text;
+        target.ui.topic = to.topic || "";
+      }
+      if (target.ui.text === source.ui.text) source.ui.text = "";
+    }
+    this.moves.push({ from, to });
+    this.moves = this.moves.slice(-100);
+    this.notifyNavigation();
+  }
+  resolveView(view: View): View {
+    if (!this.allowed(view)) return { type: "home" };
+    let result = view;
+    for (const move of this.moves)
+      if (
+        result.type === "channel" &&
+        result.topic !== undefined &&
+        result.channelId === move.from.channelId &&
+        sameTopic(result.topic, move.from.topic || "")
+      )
+        result = move.to;
+    return this.allowed(result) ? result : { type: "home" };
   }
   private notifyTopics() {
     this.topicVersion++;
-    this.topicListeners.forEach((fn) => fn());
+    for (const fn of this.topicListeners) fn();
   }
   subscribeTopics = (listener: () => void) => {
     this.topicListeners.add(listener);
@@ -467,20 +766,31 @@ export class OrgCache {
     };
   };
   topicSnapshot = () => this.topicVersion;
+  private notifyNavigation() {
+    this.navigationVersion++;
+    for (const fn of this.navigationListeners) fn();
+  }
+  subscribeNavigation = (listener: () => void) => {
+    this.navigationListeners.add(listener);
+    return () => {
+      this.navigationListeners.delete(listener);
+    };
+  };
+  navigationSnapshot = () => this.navigationVersion;
   dispose() {
-    this.entries.forEach((e) => e.controller?.abort());
-    this.controllers.forEach((c) => c.abort());
+    this.lock();
     this.entries.clear();
-    this.topicData.clear();
-    this.journal = [];
+    this.mutedUsers.clear();
+    this.blockedStreams.clear();
   }
 }
 const caches = new Map<string, { key: string; cache: OrgCache }>();
 export function getCache(account: Account) {
   let item = caches.get(account.id);
-  if (!item || item.key !== account.apiKey) {
+  const key = `${account.email}\0${account.apiKey}`;
+  if (!item || item.key !== key) {
     item?.cache.dispose();
-    item = { key: account.apiKey, cache: new OrgCache(account) };
+    item = { key, cache: new OrgCache(account) };
     caches.set(account.id, item);
   }
   return item.cache;

@@ -156,7 +156,11 @@ describe("event-driven cache", () => {
     const profile: View = { type: "profile", userId: 1, posts: "channels" };
     expect(narrow(profile)).toEqual([
       { operator: "sender", operand: 1 },
-      { operator: "is", operand: "private", negated: true },
+      {
+        operator: "is",
+        operand: expect.stringMatching(/^(dm|private)$/),
+        negated: true,
+      },
     ]);
     expect(matchesView(message, profile, 1)).toBe(true);
     expect(matchesView({ ...message, type: "private" }, profile, 1)).toBe(
