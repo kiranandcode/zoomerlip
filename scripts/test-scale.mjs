@@ -67,6 +67,8 @@ await context.route("**/*", async (route) => {
     data = { ...data, events: [] };
   } else if (u.pathname === "/api/v1/messages")
     data = { ...data, messages: [], found_oldest: true, found_newest: true };
+  else if (u.pathname === "/api/v1/user_groups" && request.method() === "GET")
+    data = { ...data, user_groups: [] };
   else {
     blocked.push(request.url());
     return route.abort();

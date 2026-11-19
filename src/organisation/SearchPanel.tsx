@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Account, Channel, Message, View } from "../types";
 import { MessageContent } from "../components/MessageContent";
 import {
@@ -42,7 +42,9 @@ export function SearchPanel({
     [trimmed, setTrimmed] = useState(false);
   const cursor = useRef<number | undefined>(undefined),
     flight = useRef<AbortController | null>(null);
-  const revision = useOrganisationRevision(account.id);
+  const revision = useOrganisationRevision(account.id, "all", () =>
+    flight.current?.abort(),
+  );
   async function load(reset: boolean) {
     flight.current?.abort();
     const controller = new AbortController();
@@ -77,7 +79,7 @@ export function SearchPanel({
       if (!controller.signal.aborted) setBusy(false);
     }
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
     void load(true);
     return () => flight.current?.abort();
   }, [query, revision, account]);
@@ -139,6 +141,7 @@ export function SearchPanel({
         <label>
           Channel
           <select
+            aria-label="Channel"
             value={filters.channel}
             onChange={(e) =>
               setFilters({ ...filters, channel: e.target.value })

@@ -126,6 +126,7 @@ function Invitations({
           <label>
             Invitation role
             <select
+              aria-label="Invitation role"
               value={role}
               onChange={(e) => setRole(Number(e.target.value))}
             >
@@ -331,6 +332,7 @@ function MemberEditor({
             <label>
               Member role
               <select
+                aria-label="Member role"
                 value={role}
                 onChange={(e) => setRole(Number(e.target.value))}
               >

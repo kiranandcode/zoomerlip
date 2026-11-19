@@ -25,15 +25,21 @@ Drafts/scheduled navigation uses a lazy adapter for A’s existing `DraftList`, 
 
 ## Limitations
 
-Physical-device testing is waived. Management browser checks and final integration review are in progress.
+Physical-device testing is waived. B's web checks are complete. Parent owns combined A/B/C integration and Android validation; this workstream changes no native code.
 
 ## Validation
 
-Search: 127 unit tests passed across 16 files. Production build passed with Node 22. Browser regression coverage follows with the topic/management fixtures.
+Final source validation: 143 unit tests passed across 19 files. Production build and formatting checks passed with Node 22. Dedicated organisation and existing UI/theme browser suites passed on the isolated MBP preview at port 4182. All organisation API writes used intercepted fixtures.
+
+Scale passed with 10,000 members: 25 initial rows, 30 scrolled rows and 76 ms from fixture response to visible member count. Scrolling and exact search passed without external requests or page errors. The fixture now supplies the permission-group GET response required by B.
+
+Parent ran the exact pending safety command directly in this worktree and reported exit 0: mutes/private revocation purge, terminal 401 locking, late authentication persistence prevention and cross-tab account removal all passed. The duplicate stale approval was cancelled; safety was not repeated.
+
+The dedicated B browser suite covers stale searches, bounded pagination, keyboard selection, moved-message context, account switching/removal, live follow/mute events, topic moves, channel settings and failure retry, privacy confirmation, roles, invitations, group membership, notification defaults, private-membership revocation and 320px drawer/focus/layout behaviour.
 
 ## Parent report
 
-Search core and App navigation are ready for integration review. Search, starred and mentions use `/`, `*`, `@` outside editable controls. Original channel/people filter is preserved. No shared View/Composer/MessageRow changes.
+Search, topic and organisation slices are ready for parent integration. Search, starred and mentions use `/`, `*`, `@` outside editable controls. Original channel/people filter is preserved. No shared View/Composer/MessageRow changes. Draft and scheduled navigation remains conditional on A's modules and needs combined-build verification.
 
 
 ## Committed increments
@@ -41,12 +47,14 @@ Search core and App navigation are ready for integration review. Search, starred
 - `c2a6ae5`: search modules, regression tests and scoped stylesheet.
 - `a72ae27`: App navigation and session invalidation integration.
 - `0cd0c9e`: permission-aware topic operations and server preferences.
+- `b4e24a9`: channel directory and permission-aware organisation management.
+- Final integration commit: reachable directory/organisation panels, conditional A navigation adapter, permission/lifecycle hardening, browser fixtures and current handoff notes.
 
 ## Topic slice
 
 Rename/move the whole topic, one selected message or that message and later messages. Re-fetch the anchor before mutation, validate its original topic/channel, confirm audience changes and merge consequences, and send notification flags explicitly. Resolve/reopen uses Zulip's checkmark-prefix convention. Server mutes require feature level 170; following requires 219. Browser timed mutes remain labelled separately. Organisation/group policies are evaluated conservatively; unknown groups hide actions. Server time-limit and permission errors preserve the form. Follow/mute and realm policy events update session state.
 
-Validation: 131 unit tests across 17 files and production build passed. UI fixtures are next. New shared Session fields: `organisation` (allowlisted settings only) and `followedTopics`. Channel types add optional group-policy fields. Native Back discovers the panel's existing `.profile-back` selector; no native code change.
+Initial validation: 131 unit tests across 17 files and production build passed. Final browser coverage is recorded above. New shared Session fields: `organisation` (allowlisted settings only) and `followedTopics`. Channel types add optional group-policy fields. Native Back discovers the panel's existing `.profile-back` selector; no native code change.
 
 Additional sources:
 - https://zulip.com/api/group-setting-values
@@ -63,7 +71,9 @@ Channel directory supports filtering, bounded rendering, inspection, join/leave,
 
 Organisation controls cover invitation creation/list/revocation, member display names and roles, deactivation/reactivation, user-group creation/metadata/members/deactivation, and three notification defaults for future members. Destructive and privilege-changing actions require confirmation. Failed mutations retain inputs; unsupported parameters report a possible partial save. User-group events invalidate permission data; defaults use documented `property`/`value` events.
 
-Validation so far: 140 unit tests across 18 files and production build pass. Existing UI suite passes, including 320px layouts, keyboard/focus, thread mutes, profile edits and mobile drawer dismissal. The dedicated B browser suite is still being refined; no real organisation has been contacted.
+Initial management validation: 140 unit tests across 18 files and production build passed. Final source and browser checks are recorded above. Existing UI coverage includes 320px layouts, keyboard/focus, thread mutes, profile edits and mobile drawer dismissal. No real organisation has been contacted.
+
+Final hardening aborts invalidated search requests synchronously, hides invalidated resource data, refreshes derived permissions after the current member's role changes, and limits private-channel membership grants to the channel's policy. Read/flag events do not reset management forms. Accessible labels and mobile drawer focus are covered by fixtures.
 
 Additional sources:
 - https://zulip.com/api/get-streams
@@ -92,5 +102,5 @@ Additional sources:
 - General organisation name/description, authentication, retention, billing and permission-policy writes are not exposed. The audited public schema has no general `PATCH /realm` endpoint. Only the three documented new-user notification defaults are editable here.
 - No web-public privacy conversion, history-policy editor, channel archive/delete, nested-group editing, invitation resend/reusable-link creation, email/profile-field administration or self-role changes.
 - Topic creation/rename to an empty topic is not exposed. Legacy timed mutes remain browser-local. Server topic preferences require feature level 170; following requires 219. Unknown group grants and legacy full-member waiting-period eligibility fail closed.
-- User groups render 100 matches, invitations 200 entries, channel subscribers 100 names, search 200 retained results. Directories have explicit 10,000-channel and 50,000-member limits. Search can continue paging after discarding older retained pages.
+- User groups render 100 matches, invitations 200 entries, channel subscribers 100 names, search 200 retained results. Directories have explicit 10,000-channel and 50,000-member limits. Search can continue paging after discarding newer retained results.
 - Parent must integrate A before verifying DraftList restore and scheduled-item navigation. `Alt+D` / `Alt+S` activate only when A modules exist. Preserve C’s `notificationTarget` Workspace integration and `OrgCache.load(view, force, requestedAnchor?)` extension during the App merge; B does not change cache loading.

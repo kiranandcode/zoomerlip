@@ -26,6 +26,12 @@ import {
   Palette,
   Lock,
 } from "lucide-react";
+import {
+  MessagingNavigation,
+  messagingViews,
+} from "./organisation/MessagingNavigation";
+import { OrganisationPanel } from "./organisation/OrganisationPanel";
+import { ChannelDirectory } from "./organisation/ChannelDirectory";
 import { useAccess } from "./organisation/useAccess";
 import { canTopic } from "./organisation/permissions";
 import { TopicEditor } from "./organisation/TopicEditor";
@@ -330,11 +336,35 @@ const Workspace = memo(function Workspace({
   const [topicMenu, setTopicMenu] = useState<TopicMenuTarget | null>(null);
   const closeTopicMenu = useCallback(() => setTopicMenu(null), []);
   const [appearance, setAppearance] = useState(false);
-  const [panel, setPanel] = useState<"search" | "starred" | "mentioned" | null>(
-    null,
-  );
+  const [panel, setPanel] = useState<
+    | "search"
+    | "starred"
+    | "mentioned"
+    | "directory"
+    | "organisation"
+    | "drafts"
+    | "scheduled"
+    | null
+  >(null);
   const openPanel = useCallback(
-    (next: "search" | "starred" | "mentioned") => {
+    (
+      next:
+        | "search"
+        | "starred"
+        | "mentioned"
+        | "directory"
+        | "organisation"
+        | "drafts"
+        | "scheduled",
+    ) => {
+      const main = document.querySelector<HTMLElement>(".main-pane");
+      if (main) main.inert = false;
+      if (["search", "starred", "mentioned"].includes(next))
+        document
+          .querySelector<HTMLInputElement>(
+            '.main-pane [aria-label="Search message text"]',
+          )
+          ?.focus();
       setPanel(next);
       setShowNav(false);
     },
@@ -363,6 +393,17 @@ const Workspace = memo(function Workspace({
         openPanel(
           e.key === "/" ? "search" : e.key === "*" ? "starred" : "mentioned",
         );
+      }
+      if (
+        !typing &&
+        e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        ((e.key === "d" && messagingViews.drafts) ||
+          (e.key === "s" && messagingViews.scheduled))
+      ) {
+        e.preventDefault();
+        openPanel(e.key === "d" ? "drafts" : "scheduled");
       }
       if (e.key === "Escape" && !typing && panel && !showNav) {
         e.preventDefault();
@@ -646,9 +687,29 @@ const Workspace = memo(function Workspace({
           />
         </div>
         <div className="nav-scroll">
-          <button className="nav-row" onClick={() => openPanel("search")}>
+          {messagingViews.drafts && (
+            <button className="nav-row" onClick={() => openPanel("drafts")}>
+              Drafts
+            </button>
+          )}
+          {messagingViews.scheduled && (
+            <button className="nav-row" onClick={() => openPanel("scheduled")}>
+              Scheduled messages
+            </button>
+          )}
+          <button
+            className="nav-row"
+            aria-label="Search messages"
+            onClick={() => openPanel("search")}
+          >
             <Search size={18} />
             Search messages <small>/</small>
+          </button>
+          <button className="nav-row" onClick={() => openPanel("organisation")}>
+            Organisation controls
+          </button>
+          <button className="nav-row" onClick={() => openPanel("directory")}>
+            Channel directory
           </button>
           <button className="nav-row" onClick={() => openPanel("starred")}>
             ★ Starred messages
@@ -849,7 +910,7 @@ const Workspace = memo(function Workspace({
           >
             <Menu size={20} />
           </button>
-          {view.type === "channel" ? (
+          {!panel && view.type === "channel" ? (
             selectedChannel?.invite_only ? (
               <Lock className="header-hash" size={24} />
             ) : (
@@ -859,13 +920,21 @@ const Workspace = memo(function Workspace({
             <AtSign className="header-hash" size={24} />
           )}
           <strong>
-            {panel === "search"
-              ? "Message search"
-              : panel === "starred"
-                ? "Starred messages"
-                : panel === "mentioned"
-                  ? "Mentions"
-                  : title}
+            {panel === "drafts"
+              ? "Drafts"
+              : panel === "scheduled"
+                ? "Scheduled messages"
+                : panel === "organisation"
+                  ? "Organisation controls"
+                  : panel === "directory"
+                    ? "Channel directory"
+                    : panel === "search"
+                      ? "Message search"
+                      : panel === "starred"
+                        ? "Starred messages"
+                        : panel === "mentioned"
+                          ? "Mentions"
+                          : title}
           </strong>
           {panel && (
             <button
@@ -876,10 +945,13 @@ const Workspace = memo(function Workspace({
               <X size={18} />
             </button>
           )}
-          {view.type === "channel" && selectedChannel?.invite_only && (
-            <span className="private-label">Private</span>
-          )}
-          {view.type === "channel" && view.topic !== undefined ? (
+          {!panel &&
+            view.type === "channel" &&
+            selectedChannel?.invite_only && (
+              <span className="private-label">Private</span>
+            )}
+          {panel ? null : view.type === "channel" &&
+            view.topic !== undefined ? (
             <>
               <span className="header-divider" />
               <span className="header-description">
@@ -919,6 +991,27 @@ const Workspace = memo(function Workspace({
           <div className="empty-state" role="status">
             Connecting securely…
           </div>
+        ) : panel === "drafts" || panel === "scheduled" ? (
+          <MessagingNavigation
+            account={account}
+            view={view}
+            kind={panel}
+            channelIds={channels.map((c) => c.stream_id)}
+            onSelect={select}
+            onClose={() => setPanel(null)}
+          />
+        ) : panel === "organisation" ? (
+          <OrganisationPanel
+            account={account}
+            access={access}
+            users={session.users}
+          />
+        ) : panel === "directory" ? (
+          <ChannelDirectory
+            account={account}
+            access={access}
+            users={session.users}
+          />
         ) : panel ? (
           <SearchPanel
             key={panel}

@@ -7,7 +7,7 @@ export function useResource<T>(
   key: string,
   load: (signal: AbortSignal) => Promise<T>,
 ) {
-  const revision = useOrganisationRevision(accountId);
+  const revision = useOrganisationRevision(accountId, "permissions");
   const [retry, setRetry] = useState(0);
   const token = `${key}:${revision}:${retry}`;
   const [state, setState] = useState<{

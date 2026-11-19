@@ -118,6 +118,7 @@ export function TopicEditor({
         <label>
           Destination channel
           <select
+            aria-label="Destination channel"
             value={destination}
             onChange={(e) => setDestination(Number(e.target.value))}
             disabled={!canTopic(access, channel, "move")}
@@ -156,6 +157,7 @@ export function TopicEditor({
         <label>
           Messages to move
           <select
+            aria-label="Messages to move"
             value={mode}
             onChange={(e) => setMode(e.target.value as Propagation)}
           >

@@ -43,7 +43,9 @@ export function searchNarrow(filters: SearchFilters) {
     result.push({
       operator,
       operand:
-        field === "channel" && /^\d+$/.test(value) ? Number(value) : value,
+        (field === "channel" || field === "sender") && /^\d+$/.test(value)
+          ? Number(value)
+          : value,
     });
   }
   if (filters.after && filters.before && filters.after >= filters.before)

@@ -63,16 +63,14 @@ describe("search", () => {
     ).toThrow();
   });
   it("pages exclusively, deduplicates and detects a nonadvancing server", async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            messages: [msg(49), msg(50), msg(49), msg(48)],
-            found_oldest: false,
-          }),
-        ),
-      );
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          messages: [msg(49), msg(50), msg(49), msg(48)],
+          found_oldest: false,
+        }),
+      ),
+    );
     vi.stubGlobal("fetch", fetcher);
     const page = await searchMessages(
       account,

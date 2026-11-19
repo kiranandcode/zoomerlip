@@ -236,6 +236,14 @@ export class SessionModel {
             ...this.state,
             organisation: {
               ...this.state.organisation,
+              ...(p.role !== undefined
+                ? {
+                    can_create_public_streams: false,
+                    can_create_private_streams: false,
+                    can_subscribe_other_users: false,
+                    can_invite_others_to_realm: false,
+                  }
+                : {}),
               ...organisationSettings(p as Record<string, unknown>),
             },
           };

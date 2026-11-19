@@ -4,6 +4,7 @@ import {
   canJoinChannel,
   canManageUser,
   canGroup,
+  canMembership,
 } from "../src/organisation/permissions";
 import type { Access } from "../src/organisation/permissions";
 import {
@@ -285,4 +286,59 @@ it("applies documented new-user default events", () => {
   expect(model.state.organisation.realm_user_settings_defaults).toEqual({
     enable_stream_push_notifications: true,
   });
+});
+it("drops derived capabilities immediately after the acting user's role changes", () => {
+  const model = new SessionModel();
+  model.register(
+    {
+      queue_id: "q",
+      last_event_id: 0,
+      realm_users: [owner],
+      can_create_public_streams: true,
+      can_invite_others_to_realm: true,
+    },
+    "Fixture",
+  );
+  model.apply(
+    [
+      {
+        id: 1,
+        type: "realm_user",
+        op: "update",
+        person: { user_id: 1, role: 600 },
+      },
+    ],
+    1,
+  );
+  expect(model.state.organisation.can_create_public_streams).toBe(false);
+  expect(model.state.organisation.can_invite_others_to_realm).toBe(false);
+});
+
+it("does not extend public subscriber grants into private channels", () => {
+  const privateChannel = { ...channel, invite_only: true };
+  expect(
+    canMembership(
+      {
+        ...access,
+        settings: { ...access.settings, can_subscribe_other_users: true },
+      },
+      privateChannel,
+      "add",
+      true,
+    ),
+  ).toBe(false);
+  expect(
+    canMembership(
+      access,
+      {
+        ...privateChannel,
+        can_add_subscribers_group: {
+          direct_members: [1],
+          direct_subgroups: [],
+        },
+      },
+      "add",
+      true,
+    ),
+  ).toBe(true);
 });

@@ -38,6 +38,8 @@ npm run test:ui
 npm run test:themes
 npm run test:safety
 npm run test:scale
+# Workstream B preview uses port 4182:
+ZOOMERLIP_TEST_URL=http://127.0.0.1:4182 npm run test:organisation
 ```
 
 Browser tests use Chrome and intercepted Zulip responses.
@@ -45,6 +47,12 @@ Browser tests use Chrome and intercepted Zulip responses.
 Run large builds on the MacBook Pro.
 
 Do not use Docker or post test messages to real organisations.
+
+## Search and organisation controls
+
+Message search includes sender, channel, topic, date and attachment filters, paged results and message context. `/` opens search; `*` opens starred messages; `@` opens mentions outside text fields.
+
+Topic controls support moves, resolution and server preferences. Channel and organisation controls follow server permissions and confirm access-changing operations. See [verified coverage and integration dependencies](docs/progress/organisation.md).
 
 ## Android
 

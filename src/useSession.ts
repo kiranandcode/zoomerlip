@@ -158,6 +158,28 @@ export function useSession(account: Account, _active: boolean): Session {
             cache.setMutedUsers(next.mutedUsers);
           cache.events(events.filter((e) => e.type !== "heartbeat"));
           if (events.length) last = events.at(-1)!.id;
+          if (
+            events.some(
+              (e) =>
+                e.type === "realm_user" &&
+                (e.person as { user_id?: number; role?: number })?.user_id ===
+                  account.userId &&
+                (e.person as { role?: number }).role !== undefined,
+            )
+          ) {
+            // Derived capability booleans are registration data. Renew after a
+            // role change instead of retaining grants from the previous role.
+            const previousQueue = queue;
+            queue = "";
+            void request(
+              account,
+              "/events",
+              { queue_id: previousQueue },
+              "DELETE",
+              signal,
+              5000,
+            ).catch(() => {});
+          }
           // Publish only real changes: every new state re-renders the whole app.
           if (next.status !== "Live" || next.error) status("Live");
           else if (next !== before) setState(next);
