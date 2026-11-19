@@ -25,3 +25,9 @@ The suggested temporary-URL TTL cache was rejected. [Zulip requires immediate co
 Thread menus additionally support marking a thread read and browser-local mutes for 15 minutes, 1 hour, 8 hours, 24 hours or indefinitely. Timed mutes expire automatically and synchronize across tabs. Server mute preferences remain respected. Registration can truncate exceptionally large unread datasets; the UI labels those counts as partial.
 
 These fixes address the reported findings. They are not a guarantee that the client has no remaining defects. Private browser themes and credentials are excluded from the repository and test artifacts.
+
+## Verification status
+
+The production build and 84 unit tests pass. Isolated browser UI and safety suites pass; the theme suite covers storage failures and concurrent editors. Thread-menu tests verify focus, persistence, expiry and unread restoration. The server-free 10,000-member fixture passes scrolling and search with 25 initial member rows rendered.
+
+The live Docker fixture passed login and expired-queue recovery during this pass. Later integration checks were interrupted by host disk exhaustion. Docker was then stopped at the user's request and must not be restarted. Future heavy test services belong on the MacBook Pro. The live-server harness is retained as historical coverage, not a current full-suite pass.

@@ -33,29 +33,22 @@ Right-click a thread, press **Shift+F10**, or use its **…** button to mark it 
 
 Features: concurrent organization event queues, subscribed channels, nested topics, individual/group DM history, member list, grouped messages, reactions, replies, editing your messages, and older-message pagination. Failed sends retain the draft. Queue expiration re-registers; connection failures back off. Rendered HTML passes through DOMPurify. Private uploads use Zulip’s temporary-URL endpoint; signed URLs are fetched immediately and never persisted.
 
-## Local Zulip
+## Testing and build location
 
-Only use the included harness against localhost. It never posts to a real organization.
+Do not use Docker. Run large builds or heavy test services on **kirans-macbook-pro** in an isolated checkout. Keep local work lightweight.
+
+The UI, theme and safety suites intercept Zulip requests and need no server or real credentials. Start the static preview, then run:
 
 ```sh
-node scripts/setup-local.mjs
-docker compose -p zoomerlip-local -f local/compose.yaml up -d
-sh scripts/local-http.sh
-node scripts/seed-local.mjs
-npm run test:local           # requires Chrome; npm run dev in another terminal
-npm run test:scale           # 10,000 synthetic members; creates no server users
-npm run test:themes          # theme editor and storage failures
 ZOOMERLIP_TEST_URL=http://127.0.0.1:4173 npm run test:ui
+ZOOMERLIP_TEST_URL=http://127.0.0.1:4173 npm run test:themes
 ZOOMERLIP_TEST_URL=http://127.0.0.1:4173 npm run test:safety
+ZOOMERLIP_TEST_URL=http://127.0.0.1:4173 npm run test:scale
 ```
 
-The checked-in configuration comes from official [docker-zulip](https://github.com/zulip/docker-zulip), using Zulip 13.3. Setup generates ignored local secrets. Port 8080 binds only to 127.0.0.1. The HTTP helper disables production hostname/HTTPS and proxy checks **inside the disposable test container**. Re-run it after restarting the container. Do not use this configuration in production. Initial database migrations take several minutes.
+Browser suites require Chrome. They cover typing performance, keyboard/touch controls, thread mutes and expiry, theme conflicts, revoked access, muted users, cancelled login and cross-tab sign-out. Tests never post to a real organization. Screenshots, when generated, go to ignored `test-results/`.
 
-Local login: `http://localhost:8080`, `morgan@zoomerlip.test`, password `Zoomerlip-local-only-2026!`. Test credentials are also written to ignored `local/test-account.json`. The browser suite covers login, live messages, expired queues, reactions, editing, attachments, DMs, concurrent sessions, reload, caching, profiles, theme persistence, and mobile layout. Set `ZOOMERLIP_TEST_URL=http://127.0.0.1:4173` to test the production preview. Screenshots go to ignored `test-results/`. Stop the test stack without deleting data:
-
-```sh
-docker compose -p zoomerlip-local -f local/compose.yaml down
-```
+The legacy local-server harness remains in `scripts/` for historical reproducibility. Do not run its Docker setup. Its fixtures and volumes are not part of the static application.
 
 ## Deploy
 
