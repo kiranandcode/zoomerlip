@@ -1,3 +1,4 @@
+import { setMessagingCapabilities } from "./messaging/capabilities";
 import { messagingEvent } from "./messaging/lifecycle";
 import { useEffect, useState } from "react";
 import { getCache } from "./cache";
@@ -99,6 +100,10 @@ export function useSession(account: Account, _active: boolean): Session {
               signal,
             );
             if (signal.aborted || finished) break;
+            setMessagingCapabilities(
+              account.id,
+              data as unknown as Record<string, unknown>,
+            );
             queue = data.queue_id;
             last = data.last_event_id;
             longpollMs =

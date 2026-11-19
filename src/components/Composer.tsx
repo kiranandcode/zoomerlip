@@ -1,3 +1,5 @@
+import { useAttachments } from "../messaging/useAttachments";
+import { messagingCapabilities } from "../messaging/capabilities";
 import {
   forwardRef,
   memo,
@@ -90,6 +92,12 @@ export const Composer = memo(
       setText(value);
       persist(value, topic);
     }
+    const attachments = useAttachments(
+      account,
+      (value) => changeText(`${saved.text}${saved.text ? "\n" : ""}${value}`),
+      onError,
+    );
+    const limits = messagingCapabilities(account.id);
     function restore(d: StoredDraft) {
       try {
         if (text.trim())
@@ -169,11 +177,18 @@ export const Composer = memo(
       [saved, view, topic],
     );
     async function send() {
-      if (!text.trim() || busy.current) return;
-      if (view.type === "channel" && (!topic.trim() || topic.length > 60)) {
+      if (!text.trim() || busy.current || attachments.busy) return;
+      if (text.length > limits.messageLength) {
+        onError(`Message exceeds the ${limits.messageLength} character limit.`);
+        return;
+      }
+      if (
+        view.type === "channel" &&
+        (!topic.trim() || topic.length > limits.topicLength)
+      ) {
         onError(
-          topic.length > 60
-            ? "Thread topics must be at most 60 characters."
+          topic.length > limits.topicLength
+            ? `Thread topics must be at most ${limits.topicLength} characters.`
             : "Give this thread a topic before sending.",
         );
         return;
@@ -213,7 +228,18 @@ export const Composer = memo(
       }
     }
     return (
-      <div className="compose-area">
+      <div
+        className="compose-area"
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          if (e.dataTransfer.files.length) {
+            e.preventDefault();
+            attachments.add(e.dataTransfer.files);
+          }
+        }}
+      >
         <div className="compose-audience">
           {view.type === "channel" ? (
             <>
@@ -230,6 +256,7 @@ export const Composer = memo(
           )}
         </div>
         <div className="messaging-tools">
+          {attachments.button}
           <button type="button" onClick={() => setShowDrafts(!showDrafts)}>
             Drafts
           </button>
@@ -241,6 +268,7 @@ export const Composer = memo(
             onClose={() => setShowDrafts(false)}
           />
         )}
+        {attachments.status}
         <form
           className="composer"
           onSubmit={(event) => {
@@ -254,7 +282,7 @@ export const Composer = memo(
               <input
                 aria-label="Thread topic"
                 aria-describedby="topic-length"
-                aria-invalid={topic.length > 60}
+                aria-invalid={topic.length > limits.topicLength}
                 placeholder="Give this thread a topic…"
                 value={topic}
                 onChange={(e) => {
@@ -265,9 +293,9 @@ export const Composer = memo(
               />
               <small
                 id="topic-length"
-                className={topic.length > 60 ? "error" : ""}
+                className={topic.length > limits.topicLength ? "error" : ""}
               >
-                {topic.length}/60
+                {topic.length}/{limits.topicLength}
               </small>
             </label>
           )}
@@ -280,6 +308,12 @@ export const Composer = memo(
               enterKeyHint={touch ? "enter" : "send"}
               placeholder={`Message ${view.type === "channel" ? "#" : "@"}${title}`}
               value={text}
+              onPaste={(e) => {
+                if (e.clipboardData.files.length) {
+                  e.preventDefault();
+                  attachments.add(e.clipboardData.files);
+                }
+              }}
               onChange={(e) => {
                 changeText(e.target.value);
               }}
@@ -300,8 +334,10 @@ export const Composer = memo(
               aria-label="Send message"
               disabled={
                 sending ||
+                attachments.busy ||
+                text.length > limits.messageLength ||
                 !text.trim() ||
-                (view.type === "channel" && topic.length > 60)
+                (view.type === "channel" && topic.length > limits.topicLength)
               }
             >
               <Send size={19} />
