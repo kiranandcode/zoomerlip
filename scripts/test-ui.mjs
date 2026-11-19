@@ -39,89 +39,93 @@ const errors = [],
 page.on("pageerror", (e) => errors.push(e.message));
 let edits = 0,
   eventCalls = 0;
-await context.addInitScript((a) => {
-  if (!["127.0.0.1", "localhost"].includes(location.hostname)) return;
-  localStorage.setItem("zoomerlip.accounts.v1", JSON.stringify([a]));
-  window.dateFormats = 0;
-  for (const name of ["toLocaleTimeString", "toLocaleDateString"]) {
-    const original = Date.prototype[name];
-    Date.prototype[name] = function (...args) {
-      window.dateFormats++;
-      return original.apply(this, args);
-    };
-  }
-}, account);
-await context.route("**/*", (route) => {
-  if (new URL(route.request().url()).origin === new URL(url).origin)
-    return route.continue();
-  blocked.push(route.request().url());
-  return route.abort();
-});
-await context.route("https://fixture.zulip.test/**", async (route) => {
-  const request = route.request(),
-    u = new URL(request.url()),
-    path = u.pathname;
-  let data = { result: "success", msg: "" };
-  if (path.endsWith("/register"))
-    data = {
-      ...data,
-      queue_id: "fixture-queue",
-      last_event_id: 0,
-      realm_name: "Fixture",
-      unread_msgs: {
-        streams: [
-          {
-            stream_id: 1,
-            topic: "Thread",
-            unread_message_ids: [298, 299, 300],
-          },
-        ],
-      },
-      subscriptions: [
-        {
-          stream_id: 1,
-          name: "private-room",
-          description: "Private fixture",
-          invite_only: true,
-        },
-      ],
-      realm_users: Array.from({ length: 1000 }, (_, i) => ({
-        user_id: i + 1,
-        full_name: i === 0 ? "Fixture User" : `Member ${i}`,
-        is_active: true,
-        is_bot: false,
-        email: `member${i}@test.invalid`,
-        role: i === 0 ? 100 : 400,
-      })),
-    };
-  else if (path.endsWith("/events")) {
-    if (eventCalls++ === 0)
-      data = { ...data, events: [{ id: 1, type: "heartbeat" }] };
-    else return;
-  } else if (path.endsWith("/topics"))
-    data = { ...data, topics: [{ name: "Thread", max_id: 300 }] };
-  else if (path.endsWith("/messages")) {
-    if (request.method() === "POST")
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    const narrow = JSON.parse(u.searchParams.get("narrow") || "[]");
-    data = {
-      ...data,
-      messages: narrow.some((n) => n.operator === "stream") ? messages : [],
-      found_oldest: true,
-    };
-  } else if (/\/messages\/\d+$/.test(path)) {
-    if (request.method() === "PATCH") edits++;
-    else
+// Every context gets the same synthetic organization and network fence.
+async function prepare(ctx) {
+  await ctx.addInitScript((a) => {
+    if (!["127.0.0.1", "localhost"].includes(location.hostname)) return;
+    localStorage.setItem("zoomerlip.accounts.v1", JSON.stringify([a]));
+    window.dateFormats = 0;
+    for (const name of ["toLocaleTimeString", "toLocaleDateString"]) {
+      const original = Date.prototype[name];
+      Date.prototype[name] = function (...args) {
+        window.dateFormats++;
+        return original.apply(this, args);
+      };
+    }
+  }, account);
+  await ctx.route("**/*", (route) => {
+    if (new URL(route.request().url()).origin === new URL(url).origin)
+      return route.continue();
+    blocked.push(route.request().url());
+    return route.abort();
+  });
+  await ctx.route("https://fixture.zulip.test/**", async (route) => {
+    const request = route.request(),
+      u = new URL(request.url()),
+      path = u.pathname;
+    let data = { result: "success", msg: "" };
+    if (path.endsWith("/register"))
       data = {
         ...data,
-        message: { ...messages.at(-1), content: "Message 300" },
+        queue_id: "fixture-queue",
+        last_event_id: 0,
+        realm_name: "Fixture",
+        unread_msgs: {
+          streams: [
+            {
+              stream_id: 1,
+              topic: "Thread",
+              unread_message_ids: [298, 299, 300],
+            },
+          ],
+        },
+        subscriptions: [
+          {
+            stream_id: 1,
+            name: "private-room",
+            description: "Private fixture",
+            invite_only: true,
+          },
+        ],
+        realm_users: Array.from({ length: 1000 }, (_, i) => ({
+          user_id: i + 1,
+          full_name: i === 0 ? "Fixture User" : `Member ${i}`,
+          is_active: true,
+          is_bot: false,
+          email: `member${i}@test.invalid`,
+          role: i === 0 ? 100 : 400,
+        })),
       };
-  }
-  await route.fulfill({
-    json: data,
-    headers: { "access-control-allow-origin": "*" },
+    else if (path.endsWith("/events")) {
+      if (eventCalls++ === 0)
+        data = { ...data, events: [{ id: 1, type: "heartbeat" }] };
+      else return;
+    } else if (path.endsWith("/topics"))
+      data = { ...data, topics: [{ name: "Thread", max_id: 300 }] };
+    else if (path.endsWith("/messages")) {
+      if (request.method() === "POST")
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      const narrow = JSON.parse(u.searchParams.get("narrow") || "[]");
+      data = {
+        ...data,
+        messages: narrow.some((n) => n.operator === "stream") ? messages : [],
+        found_oldest: true,
+      };
+    } else if (/\/messages\/\d+$/.test(path)) {
+      if (request.method() === "PATCH") edits++;
+      else
+        data = {
+          ...data,
+          message: { ...messages.at(-1), content: "Message 300" },
+        };
+    }
+    await route.fulfill({
+      json: data,
+      headers: { "access-control-allow-origin": "*" },
+    });
   });
-});
+}
+await prepare(context);
 try {
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page
@@ -309,11 +313,80 @@ try {
       }
     return failures;
   });
+  // A 320px touch phone: actions by tap only, a picker that fits the pane,
+  // and Enter that adds a line instead of sending.
+  const touch = await browser.newContext({
+    viewport: { width: 320, height: 640 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  touch.setDefaultTimeout(10000);
+  await prepare(touch);
+  const phone = await touch.newPage();
+  phone.on("pageerror", (e) => errors.push(e.message));
+  await phone.goto(url, { waitUntil: "domcontentloaded" });
+  await phone.getByRole("button", { name: "Toggle channels" }).tap();
+  await phone
+    .getByRole("button", {
+      name: "private-room (private channel)",
+      exact: true,
+    })
+    .tap();
+  const row = phone.locator(".message").last();
+  await row.scrollIntoViewIfNeeded();
+  await row.tap();
+  await expect(row.locator(".message-actions")).toBeHidden();
+  await row.getByRole("button", { name: "Message actions" }).tap();
+  await expect(row.locator(".message-actions")).toBeVisible();
+  await row.getByRole("button", { name: "Add reaction" }).tap();
+  const pane = await phone.locator(".message-scroll").boundingBox();
+  const targets = await row
+    .locator(".emoji-picker button")
+    .evaluateAll((buttons) =>
+      buttons.map((b) => {
+        const r = b.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          r.left + r.width / 2,
+          r.top + r.height / 2,
+        );
+        return {
+          left: r.left,
+          right: r.right,
+          height: r.height,
+          hit: b === hit || b.contains(hit),
+        };
+      }),
+    );
+  expect(targets.length).toBeGreaterThan(0);
+  for (const t of targets) {
+    expect(t.left).toBeGreaterThanOrEqual(pane.x);
+    expect(t.right).toBeLessThanOrEqual(pane.x + pane.width);
+    expect(t.height).toBeGreaterThanOrEqual(44);
+    expect(t.hit).toBe(true);
+  }
+  await phone.keyboard.press("Escape");
+  await row.getByRole("button", { name: "Message actions" }).tap();
+  await expect(row.locator(".message-actions")).toBeHidden();
+  const box = phone.getByRole("textbox", { name: "Message", exact: true });
+  await box.tap();
+  await box.pressSequentially("one");
+  await box.press("Enter");
+  await box.pressSequentially("two");
+  await expect(box).toHaveValue("one\ntwo");
+  expect(
+    await box.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+  ).toBeGreaterThanOrEqual(16);
+  expect(
+    await phone.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await touch.close();
   expect(contrastFailures).toEqual([]);
   expect(errors).toEqual([]);
   expect(blocked).toEqual([]);
   console.log(
-    "PASS 300-row typing isolation; keyboard message/emoji/member navigation; focus retention; no-op edits; audience labels; native dialog and mobile drawer dismissal; late sends; 12 theme/accent contrast combinations; thread menu keyboard/right-click, timed mute expiry and unread restoration; no external requests.",
+    "PASS 300-row typing isolation; keyboard message/emoji/member navigation; focus retention; no-op edits; audience labels; 320px touch actions, picker fit and multi-line Enter; native dialog and mobile drawer dismissal; late sends; 12 theme/accent contrast combinations; thread menu keyboard/right-click, timed mute expiry and unread restoration; no external requests.",
   );
 } finally {
   await browser.close();

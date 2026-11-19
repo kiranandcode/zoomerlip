@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { request } from "../api";
+import { sendsOnEnter, touchPrimary } from "../composerKeys";
 import type { Account, Message, Reaction, View } from "../types";
 import { Avatar } from "./Avatar";
 import { MessageContent } from "./MessageContent";
@@ -264,9 +265,10 @@ export const MessageRow = memo(function MessageRow({
                     setEditing(false);
                     article.current?.focus();
                   } else if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing
+                    sendsOnEnter(
+                      { ...e, isComposing: e.nativeEvent.isComposing },
+                      touchPrimary(),
+                    )
                   ) {
                     e.preventDefault();
                     void save();

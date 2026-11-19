@@ -3,11 +3,13 @@ import {
   memo,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
 import { Lock, MessageCircle, Send } from "lucide-react";
 import { request } from "../api";
+import { sendsOnEnter, touchPrimary } from "../composerKeys";
 import type { Account, Message, View } from "../types";
 export type ComposerHandle = {
   reply: (message: Message) => void;
@@ -37,6 +39,14 @@ export const Composer = memo(
     const input = useRef<HTMLTextAreaElement>(null),
       alive = useRef(true),
       busy = useRef(false);
+    const [touch] = useState(touchPrimary);
+    // Grow with the draft up to the CSS max-height; then the textarea scrolls.
+    useLayoutEffect(() => {
+      const el = input.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }, [text]);
     useEffect(() => {
       alive.current = true;
       return () => {
@@ -158,6 +168,7 @@ export const Composer = memo(
               id="message-composer"
               aria-label="Message"
               rows={1}
+              enterKeyHint={touch ? "enter" : "send"}
               placeholder={`Message ${view.type === "channel" ? "#" : "@"}${title}`}
               value={text}
               onChange={(e) => {
@@ -166,9 +177,10 @@ export const Composer = memo(
               }}
               onKeyDown={(event) => {
                 if (
-                  event.key === "Enter" &&
-                  !event.shiftKey &&
-                  !event.nativeEvent.isComposing
+                  sendsOnEnter(
+                    { ...event, isComposing: event.nativeEvent.isComposing },
+                    touch,
+                  )
                 ) {
                   event.preventDefault();
                   void send();
@@ -189,10 +201,17 @@ export const Composer = memo(
           </div>
         </form>
         <div className="compose-hint">
-          <span>
-            <strong>Enter</strong> to send · <strong>Shift + Enter</strong> for
-            a new line
-          </span>
+          {touch ? (
+            <span>
+              <strong>Send</strong> to post · <strong>Enter</strong> for a new
+              line
+            </span>
+          ) : (
+            <span>
+              <strong>Enter</strong> to send · <strong>Shift + Enter</strong>{" "}
+              for a new line
+            </span>
+          )}
           <span>Markdown welcome</span>
         </div>
       </div>

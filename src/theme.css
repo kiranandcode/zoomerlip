@@ -1657,3 +1657,117 @@ button:hover {
     min-height: 36px;
   }
 }
+
+/* Phones and tablets: system bars, keyboards and fingers. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+.app-shell {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.compose-row textarea {
+  resize: none;
+  overflow-y: auto;
+}
+/* The picker must fit the message pane, which is 260px wide on a 320px phone. */
+.emoji-picker {
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100% - 16px);
+}
+@media (hover: none) {
+  /* A tap leaves :hover and :focus-within set, so only the toggle shows actions. */
+  .message:hover .message-actions,
+  .message:focus-within .message-actions {
+    display: none;
+  }
+  .message.show-actions .message-actions {
+    display: flex;
+  }
+  .grouped.show-actions .group-time {
+    visibility: visible;
+  }
+}
+@media (pointer: coarse) {
+  /* Below 16px, iOS zooms the page when a field takes focus. */
+  :is(
+    input:not([type="color"]):not([type="range"]):not([type="checkbox"]):not(
+        [type="radio"]
+      ),
+    textarea,
+    select
+  ) {
+    font-size: max(16px, var(--message-size, 15px));
+  }
+  .icon-button,
+  .message-actions button,
+  .emoji-picker button,
+  .topic-options,
+  .touch-actions {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .reactions button {
+    min-height: 36px;
+    padding: 6px 10px;
+  }
+  .nav-row,
+  .channel-name,
+  .topic {
+    min-height: 44px;
+  }
+}
+@media (max-width: 640px) {
+  .emoji-picker {
+    right: 8px;
+  }
+  .sidebar {
+    top: env(safe-area-inset-top);
+    bottom: env(safe-area-inset-bottom);
+    left: calc(60px + env(safe-area-inset-left));
+  }
+  .nav-backdrop {
+    left: calc(60px + env(safe-area-inset-left));
+  }
+  /* At the bottom a notice would cover the composer's Send button. */
+  .toast {
+    left: 12px;
+    right: 12px;
+    top: calc(12px + env(safe-area-inset-top));
+    bottom: auto;
+  }
+}
+/* Landscape phones are wide but short: keep the channel list in a drawer. */
+@media (max-height: 500px) and (pointer: coarse) and (min-width: 641px) {
+  .members,
+  .members-toggle {
+    display: none;
+  }
+  .sidebar {
+    display: none;
+    position: fixed;
+    z-index: 10;
+    top: env(safe-area-inset-top);
+    bottom: env(safe-area-inset-bottom);
+    left: calc(72px + env(safe-area-inset-left));
+    width: 245px;
+    box-shadow: 10px 0 40px #0007;
+  }
+  .sidebar.mobile-open {
+    display: flex;
+  }
+  .mobile-menu {
+    display: flex;
+  }
+  .mobile-close {
+    display: inline-flex;
+  }
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0 0 0 calc(72px + env(safe-area-inset-left));
+    background: #080a1090;
+    z-index: 9;
+  }
+}
