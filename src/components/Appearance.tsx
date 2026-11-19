@@ -1,25 +1,29 @@
 import { CustomThemes } from "./CustomThemes";
-import { useEffect, useRef, useState } from "react";
+import "./appearanceSafety.css";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { X, Check, RotateCcw } from "lucide-react";
-import { defaults, readPreferences, savePreferences } from "../appearance";
+import {
+  defaults,
+  readPreferences,
+  savePreferences,
+  subscribePreferences,
+  preferenceError,
+} from "../appearance";
 import type { Preferences } from "../appearance";
 export function Appearance({ onClose }: { onClose: () => void }) {
   const [editing, setEditing] = useState(false);
-  const [prefs, setPrefs] = useState(readPreferences);
+  const prefs = useSyncExternalStore(subscribePreferences, readPreferences);
   const ref = useRef<HTMLDialogElement>(null);
-  const [storageError, setStorageError] = useState("");
+  const storageError = useSyncExternalStore(
+    subscribePreferences,
+    preferenceError,
+  );
   useEffect(() => {
     ref.current?.showModal();
     return () => ref.current?.close();
   }, []);
   const update = (patch: Partial<Preferences>) => {
-    const next = { ...prefs, ...patch };
-    setPrefs(next);
-    setStorageError(
-      savePreferences(next)
-        ? ""
-        : "Applied for this session. Browser storage is unavailable; changes were not saved.",
-    );
+    savePreferences({ ...readPreferences(), ...patch });
   };
   return (
     <dialog

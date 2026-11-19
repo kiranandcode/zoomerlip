@@ -1,4 +1,9 @@
-import { applyCustomTheme, clearCustomTheme, readThemes } from "./customThemes";
+import {
+  applyCustomTheme,
+  clearCustomTheme,
+  readThemes,
+  subscribeThemes,
+} from "./customThemes";
 export type Preferences = {
   theme: "graphite" | "midnight" | "light" | "custom";
   customId?: string;
@@ -15,36 +20,103 @@ export const defaults: Preferences = {
   motion: true,
 };
 const key = "zoomerlip.appearance.v1";
-export function readPreferences(): Preferences {
+let current: Preferences | undefined,
+  storage: Storage | undefined,
+  raw: string | null | undefined,
+  sessionOnly = false,
+  error = "";
+const listeners = new Set<() => void>();
+let listening = false;
+function normalize(input: unknown): Preferences {
+  const p = (
+    input && typeof input === "object" ? input : {}
+  ) as Partial<Preferences>;
+  const theme = ["graphite", "midnight", "light", "custom"].includes(
+    p.theme || "",
+  )
+    ? p.theme!
+    : defaults.theme;
+  const customId =
+    theme === "custom" && readThemes().some((t) => t.id === p.customId)
+      ? p.customId
+      : undefined;
+  return {
+    theme: theme === "custom" && !customId ? "graphite" : theme,
+    customId,
+    accent: ["lime", "mint", "violet", "coral"].includes(p.accent || "")
+      ? p.accent!
+      : defaults.accent,
+    density: p.density === "compact" ? "compact" : "cozy",
+    fontSize:
+      typeof p.fontSize === "number" && Number.isFinite(p.fontSize)
+        ? Math.max(13, Math.min(18, p.fontSize))
+        : 15,
+    motion: typeof p.motion === "boolean" ? p.motion : true,
+  };
+}
+function storageValue() {
   try {
-    const p = JSON.parse(localStorage.getItem(key) || "{}");
-    if (
-      p.theme === "custom" &&
-      !readThemes().some((t) => t.id === p.customId)
-    ) {
-      p.theme = "graphite";
-      delete p.customId;
+    if (storage !== localStorage) {
+      storage = localStorage;
+      current = undefined;
+      sessionOnly = false;
+      raw = undefined;
+      error = "";
     }
-    return {
-      theme: ["graphite", "midnight", "light", "custom"].includes(p.theme)
-        ? p.theme
-        : defaults.theme,
-      customId: typeof p.customId === "string" ? p.customId : undefined,
-      accent: ["lime", "mint", "violet", "coral"].includes(p.accent)
-        ? p.accent
-        : defaults.accent,
-      density: p.density === "compact" ? "compact" : "cozy",
-      fontSize:
-        typeof p.fontSize === "number"
-          ? Math.max(13, Math.min(18, p.fontSize))
-          : 15,
-      motion: typeof p.motion === "boolean" ? p.motion : true,
-    };
+    return localStorage.getItem(key);
   } catch {
-    return defaults;
+    return undefined;
   }
 }
+export function readPreferences(): Preferences {
+  const value = storageValue();
+  if (current && (sessionOnly || value === raw)) return current;
+  raw = value;
+  try {
+    current = normalize(JSON.parse(value || "{}"));
+  } catch {
+    current = { ...defaults };
+  }
+  return current;
+}
+function notify() {
+  listeners.forEach((fn) => fn());
+}
+function sync() {
+  sessionOnly = false;
+  current = undefined;
+  raw = undefined;
+  error = "";
+  applyPreferences(readPreferences());
+  notify();
+}
+function listen() {
+  if (listening) return;
+  listening = true;
+  window.addEventListener("storage", (e) => {
+    if (e.key === null || e.key === key) sync();
+  });
+  subscribeThemes(() => {
+    const previous = readPreferences();
+    const next = normalize(previous);
+    if (JSON.stringify(previous) !== JSON.stringify(next)) current = next;
+    applyPreferences(current || previous);
+    notify();
+  });
+}
+export function subscribePreferences(listener: () => void) {
+  listen();
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+export const preferenceError = () => {
+  readPreferences();
+  return error;
+};
 export function applyPreferences(p: Preferences) {
+  listen();
   clearCustomTheme();
   const root = document.documentElement;
   root.dataset.theme = p.theme === "custom" ? "graphite" : p.theme;
@@ -58,11 +130,24 @@ export function applyPreferences(p: Preferences) {
   }
 }
 export function savePreferences(p: Preferences) {
-  applyPreferences(p);
+  storageValue();
+  current = normalize(p);
+  applyPreferences(current);
   try {
-    localStorage.setItem(key, JSON.stringify(p));
-    return true;
+    const value = JSON.stringify(current);
+    localStorage.setItem(key, value);
+    raw = value;
+    sessionOnly = false;
+    error = "";
   } catch {
-    return false;
+    sessionOnly = true;
+    error =
+      "Applied for this session. Browser storage is unavailable; changes were not saved.";
   }
+  notify();
+  return !sessionOnly;
+}
+/** An always-readable recovery route, also available before sign-in. */
+export function resetAppearance() {
+  return savePreferences({ ...defaults });
 }
