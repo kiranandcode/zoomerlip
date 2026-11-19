@@ -384,6 +384,7 @@ try {
     .getByRole("button", { name: "Close", exact: true })
     .click();
   await page
+    .getByRole("main")
     .getByRole("button", { name: "Scheduled messages", exact: true })
     .click();
   const schedulePanel = page.getByRole("region", {
@@ -430,13 +431,38 @@ try {
     .getByRole("button", { name: "Prepare interactive draft" })
     .click();
   await expect(composer).toHaveValue("/todo Fixture tasks\n- One\n- Two");
-  await page.getByRole("button", { name: "Drafts", exact: true }).click();
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "Drafts", exact: true })
+    .click();
   const drafts = page.getByRole("region", {
     name: "Saved drafts",
     exact: true,
   });
   await expect(drafts.getByText(/Snippet content/).first()).toBeVisible();
   await drafts.getByRole("button", { name: "Close", exact: true }).click();
+  // Sidebar navigation must use the same draft store and restore into Composer.
+  await page
+    .locator("#channel-sidebar")
+    .getByRole("button", { name: "Drafts", exact: true })
+    .click();
+  await drafts
+    .locator("article")
+    .filter({ hasText: "Snippet content" })
+    .first()
+    .getByRole("button", { name: "Restore", exact: true })
+    .click();
+  await expect(composer).toHaveValue(/Snippet content/);
+  await page
+    .locator("#channel-sidebar")
+    .getByRole("button", { name: "Scheduled messages", exact: true })
+    .click();
+  await expect(
+    schedulePanel.getByText("Edited scheduled fixture", { exact: true }),
+  ).toBeVisible();
+  await schedulePanel
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(

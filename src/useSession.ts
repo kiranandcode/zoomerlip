@@ -6,6 +6,7 @@ import {
   setMessagingStreams,
 } from "./messaging/capabilities";
 import { messagingEvent } from "./messaging/lifecycle";
+import { invalidateOrganisation } from "./organisation/lifecycle";
 import { getCache } from "./cache";
 import { clearUploadCache } from "./uploads";
 import { ApiError, pause, request } from "./api";
@@ -58,6 +59,7 @@ export function useSession(account: Account, active: boolean): Session {
       clearNotificationHistory(account.id);
       stopPresence();
       lifetime.abort();
+      invalidateOrganisation(account.id);
       clearUploadCache(account.id);
       model.state = {
         ...initialSession,
@@ -113,6 +115,7 @@ export function useSession(account: Account, active: boolean): Session {
                   "stream",
                   "realm_user",
                   "realm",
+                  "realm_user_settings_defaults",
                   "update_message_flags",
                   "muted_users",
                   "user_topic",
@@ -120,6 +123,7 @@ export function useSession(account: Account, active: boolean): Session {
                   "presence",
                   "user_status",
                   "user_settings",
+                  "user_group",
                 ],
                 fetch_event_types: [
                   "subscription",
@@ -127,6 +131,7 @@ export function useSession(account: Account, active: boolean): Session {
                   "user_settings",
                   "realm_user",
                   "realm",
+                  "realm_user_settings_defaults",
                   "muted_users",
                   "user_topic",
                   "recent_private_conversations",
@@ -160,6 +165,7 @@ export function useSession(account: Account, active: boolean): Session {
             model.register(data, account.name);
             notifications.clear();
             live.register(data as unknown as Record<string, unknown>);
+            invalidateOrganisation(account.id);
             cache.unlock();
             const registered = new Set(
               model.state.channels.map((c) => c.stream_id),
@@ -209,6 +215,7 @@ export function useSession(account: Account, active: boolean): Session {
           if (next.channels !== before.channels)
             live.update({ channels: next.channels });
           notifications.events(events);
+          invalidateOrganisation(account.id, events);
           if (next.channels !== before.channels) {
             const subscribed = new Set(next.channels.map((c) => c.stream_id));
             cache.purgeStreams(previous.filter((id) => !subscribed.has(id)));
@@ -220,6 +227,28 @@ export function useSession(account: Account, active: boolean): Session {
           messagingEvent(account, events);
           cache.events(events.filter((e) => e.type !== "heartbeat"));
           if (events.length) last = events.at(-1)!.id;
+          if (
+            events.some(
+              (e) =>
+                e.type === "realm_user" &&
+                (e.person as { user_id?: number; role?: number })?.user_id ===
+                  account.userId &&
+                (e.person as { role?: number }).role !== undefined,
+            )
+          ) {
+            // Derived capability booleans are registration data. Renew after a
+            // role change instead of retaining grants from the previous role.
+            const previousQueue = queue;
+            queue = "";
+            void request(
+              account,
+              "/events",
+              { queue_id: previousQueue },
+              "DELETE",
+              signal,
+              5000,
+            ).catch(() => {});
+          }
           // Publish only real changes: every new state re-renders the whole app.
           if (next.status !== "Live" || next.error) status("Live");
           else if (next !== before) setState(next);

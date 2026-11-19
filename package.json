@@ -14,8 +14,10 @@
     "test:scale": "node scripts/test-scale.mjs",
     "test:themes": "node scripts/test-themes.mjs",
     "test:messaging": "node scripts/test-messaging.mjs",
+    "test:notifications": "node scripts/test-notifications.mjs",
     "test:ui": "node scripts/test-ui.mjs",
-    "test:safety": "node scripts/test-safety.mjs"
+    "test:safety": "node scripts/test-safety.mjs",
+    "test:organisation": "node scripts/test-organisation.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

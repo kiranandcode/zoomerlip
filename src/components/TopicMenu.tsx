@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { setTopicPolicy } from "../organisation/topics";
+import { invalidateOrganisation } from "../organisation/lifecycle";
 import { markThreadRead } from "../api";
 import { setThreadMute } from "../topicPreferences";
 import type { Account } from "../types";
@@ -13,12 +15,20 @@ export function TopicMenu({
   account,
   target,
   muted,
+  serverMuted,
+  followed,
+  featureLevel,
+  onManage,
   onOpen,
   onClose,
 }: {
   account: Account;
   target: TopicMenuTarget;
   muted: boolean;
+  serverMuted: boolean;
+  followed: boolean;
+  featureLevel: number;
+  onManage?: () => void;
   onOpen: () => void;
   onClose: () => void;
 }) {
@@ -52,6 +62,31 @@ export function TopicMenu({
       setError((e as Error).message);
     }
   };
+  async function preference(policy: 0 | 1 | 2 | 3) {
+    setBusy(true);
+    setError("");
+    operation.current?.abort();
+    operation.current = new AbortController();
+    try {
+      await setTopicPolicy(
+        account,
+        target.channelId,
+        target.topic,
+        policy,
+        featureLevel,
+        operation.current.signal,
+      );
+      if (!operation.current.signal.aborted) {
+        invalidateOrganisation(account.id);
+        onClose();
+      }
+    } catch (e) {
+      if (!operation.current.signal.aborted) {
+        setError((e as Error).message);
+        setBusy(false);
+      }
+    }
+  }
   return (
     <div
       className="topic-context-menu"
@@ -115,6 +150,50 @@ export function TopicMenu({
       >
         Mark thread read
       </button>
+      {onManage && (
+        <button
+          role="menuitem"
+          disabled={busy}
+          onClick={() => {
+            onManage();
+            onClose();
+          }}
+        >
+          Rename, move or resolve topic
+        </button>
+      )}
+      <span className="menu-section">Server topic preferences</span>
+      {featureLevel >= 170 ? (
+        <>
+          <button
+            role="menuitem"
+            disabled={busy}
+            onClick={() => void preference(serverMuted ? 2 : 1)}
+          >
+            {serverMuted ? "Unmute topic on server" : "Mute topic on server"}
+          </button>
+          <button
+            role="menuitem"
+            disabled={busy}
+            onClick={() => void preference(0)}
+          >
+            Use channel notification default
+          </button>
+          {featureLevel >= 219 ? (
+            <button
+              role="menuitem"
+              disabled={busy}
+              onClick={() => void preference(followed ? 0 : 3)}
+            >
+              {followed ? "Unfollow topic" : "Follow topic"}
+            </button>
+          ) : (
+            <small>Following requires server feature level 219.</small>
+          )}
+        </>
+      ) : (
+        <small>Server topic controls require feature level 170.</small>
+      )}
       <span className="menu-section">Mute notifications in this browser</span>
       {muted && (
         <button role="menuitem" onClick={() => mute("off")}>

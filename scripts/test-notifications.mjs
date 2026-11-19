@@ -1,11 +1,8 @@
 // Every organization request is intercepted. Never writes to a real organization.
 import { chromium, expect } from "@playwright/test";
 const url = process.env.ZOOMERLIP_TEST_URL || "http://127.0.0.1:4183";
-if (
-  !["localhost", "127.0.0.1"].includes(new URL(url).hostname) ||
-  new URL(url).port !== "4183"
-)
-  throw new Error("Use workstream C's local fixture port 4183.");
+if (!["localhost", "127.0.0.1"].includes(new URL(url).hostname))
+  throw new Error("Use a local fixture server.");
 const account = {
   id: "https://notification-fixture.test|1",
   url: "https://notification-fixture.test",
@@ -354,6 +351,29 @@ try {
       ),
     )
     .toBe(true);
+  // A notification for the active organisation must also dismiss a search panel.
+  await page
+    .getByRole("button", { name: "Search messages", exact: true })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Message search" }),
+  ).toBeVisible();
+  await page.evaluate(
+    ({ id }) =>
+      window.dispatchEvent(
+        new CustomEvent("zoomerlip-notification-open", {
+          detail: { accountId: id, messageId: 50 },
+        }),
+      ),
+    other,
+  );
+  await expect(
+    page.getByRole("region", { name: "Message search" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("textbox", { name: "Message", exact: true }),
+  ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(
