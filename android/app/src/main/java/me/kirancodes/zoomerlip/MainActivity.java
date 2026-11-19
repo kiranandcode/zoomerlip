@@ -40,7 +40,7 @@ public final class MainActivity extends Activity {
                 android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 android.graphics.Insets keyboard = insets.getInsets(WindowInsets.Type.ime());
                 v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, keyboard.bottom));
-                return insets;
+                return WindowInsets.CONSUMED;
             });
         }
         WebSettings settings = web.getSettings();
@@ -84,7 +84,8 @@ public final class MainActivity extends Activity {
                 if (!NavigationPolicy.localDocument(web.getUrl())) return false;
                 if (fileSelection != null) fileSelection.onReceiveValue(null);
                 fileSelection = callback;
-                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json");
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+                    .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/json", "text/plain", "application/octet-stream"});
                 try { startActivityForResult(intent, PICK_THEME); return true; }
                 catch (ActivityNotFoundException e) { fileSelection = null; callback.onReceiveValue(null); return true; }
             }
@@ -132,7 +133,7 @@ public final class MainActivity extends Activity {
         if (pendingExport != null || value == null || value.length() > 16384) return;
         try {
             JSONObject theme = new JSONObject(value);
-            if (theme.getInt("version") != 1 || !Arrays.asList("dark", "light").contains(theme.getString("base"))) return;
+            if (!Integer.valueOf(1).equals(theme.get("version")) || !Arrays.asList("dark", "light").contains(theme.getString("base"))) return;
             String name = theme.getString("name");
             if (name.trim().isEmpty() || name.length() > 48) return;
             JSONObject colours = theme.getJSONObject("colours"), cleanColours = new JSONObject();
