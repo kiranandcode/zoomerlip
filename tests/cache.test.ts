@@ -222,3 +222,24 @@ describe("cache lifecycle", () => {
     expect(cache.snapshot(channel).messages).toHaveLength(0);
   });
 });
+
+it("a forced reconciliation replaces an in-flight request without accepting its late response", async () => {
+  let finish!: (r: Response) => void;
+  const fetch = vi
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(response([{ ...message, id: 20 }]));
+  vi.stubGlobal("fetch", fetch);
+  const cache = new OrgCache(account);
+  const old = cache.load(channel);
+  await cache.load(channel, true);
+  finish(response([message]));
+  await old;
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(cache.snapshot(channel).messages.map((m) => m.id)).toEqual([20]);
+});

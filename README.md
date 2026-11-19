@@ -20,8 +20,14 @@ API keys are saved in localStorage. Passwords are used only to obtain an API key
 ```sh
 npm run build       # dist/: deploy these static files
 npm run preview
-npm test           # credential handling and HTML sanitization
+npm test           # auth, sanitization, cache/event consistency
 ```
+
+Use **My posts** or your name in the bottom-left corner to open your profile. Click a member or message sender for their posts. Profiles show channel posts by default; **Include DMs** adds only messages accessible to your account. Older posts load on demand.
+
+The palette button beside your name opens **Appearance**: Graphite, Midnight, or Light; four accents; compact/cozy spacing; text size; and motion controls. Preferences persist on this device and respect system reduced motion.
+
+Message and topic caches live in memory, separately per account. Warm navigation avoids requests for 60 seconds (topics: five minutes); stale views display cached content during refresh. Live events update cached messages directly. Queue recovery and topic moves reconcile with the server. Up to 24 recent views are retained; inactive histories are trimmed to 300 messages when updated. Drafts and scroll positions survive navigation within retained views, but not reloads. Member rendering is windowed for large organizations. Signing out clears the account cache.
 
 Features: concurrent organization event queues, subscribed channels, nested topics, individual/group DM history, member list, grouped messages, reactions, replies, editing your messages, and older-message pagination. Failed sends retain the draft. Queue expiration re-registers; connection failures back off. Rendered HTML passes through DOMPurify. Private uploads use Zulip’s temporary-URL endpoint; signed URLs are fetched immediately and never persisted.
 
@@ -35,11 +41,12 @@ docker compose -p zoomerlip-local -f local/compose.yaml up -d
 sh scripts/local-http.sh
 node scripts/seed-local.mjs
 npm run test:local           # requires Chrome; npm run dev in another terminal
+npm run test:scale           # 10,000 synthetic members; creates no server users
 ```
 
 The checked-in configuration comes from official [docker-zulip](https://github.com/zulip/docker-zulip), using Zulip 13.3. Setup generates ignored local secrets. Port 8080 binds only to 127.0.0.1. The HTTP helper disables production hostname/HTTPS and proxy checks **inside the disposable test container**. Re-run it after restarting the container. Do not use this configuration in production. Initial database migrations take several minutes.
 
-Local login: `http://localhost:8080`, `morgan@zoomerlip.test`, password `Zoomerlip-local-only-2026!`. Test credentials are also written to ignored `local/test-account.json`. The browser suite covers login, live messages, expired queues, reactions, editing, attachments, DMs, concurrent sessions, reload, and mobile layout. Screenshots go to ignored `test-results/`. Stop the test stack without deleting data:
+Local login: `http://localhost:8080`, `morgan@zoomerlip.test`, password `Zoomerlip-local-only-2026!`. Test credentials are also written to ignored `local/test-account.json`. The browser suite covers login, live messages, expired queues, reactions, editing, attachments, DMs, concurrent sessions, reload, caching, profiles, theme persistence, and mobile layout. Set `ZOOMERLIP_TEST_URL=http://127.0.0.1:4173` to test the production preview. Screenshots go to ignored `test-results/`. Stop the test stack without deleting data:
 
 ```sh
 docker compose -p zoomerlip-local -f local/compose.yaml down

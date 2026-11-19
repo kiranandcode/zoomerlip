@@ -35,7 +35,15 @@ const context = await browser.newContext({
   viewport: { width: 1440, height: 1000 },
 });
 const page = await context.newPage();
-let registrations = 0;
+let registrations = 0,
+  historyRequests = 0,
+  topicRequests = 0;
+page.on("request", (request) => {
+  const path = new URL(request.url()).pathname;
+  if (request.method() === "GET" && path === "/api/v1/messages")
+    historyRequests++;
+  if (path.endsWith("/topics")) topicRequests++;
+});
 page.on("response", (response) => {
   if (response.url().endsWith("/api/v1/register") && response.status() === 200)
     registrations++;
@@ -87,6 +95,8 @@ try {
       .first(),
   ).toBeVisible();
   await page.screenshot({ path: "test-results/channel.png" });
+  const historyBeforeEvents = historyRequests,
+    topicsBeforeEvents = topicRequests;
   const marker = `Browser smoke ${Date.now()}`;
   await page
     .getByRole("textbox", { name: "Message", exact: true })
@@ -130,7 +140,11 @@ try {
   await expect(page.getByText(`${marker} edited`, { exact: true })).toBeVisible(
     { timeout: 10000 },
   );
-  console.log("PASS editing");
+  expect(historyRequests).toBe(historyBeforeEvents);
+  expect(topicRequests).toBe(topicsBeforeEvents);
+  console.log(
+    "PASS editing; message/reaction/edit events caused zero history or topic requests",
+  );
   // Uploaded text files are opened with a fresh temporary URL on every click.
   const form = new FormData();
   form.set(
@@ -224,11 +238,95 @@ try {
     timeout: 10000,
   });
   console.log("PASS DM history and sending");
+  // Warm navigation preserves drafts and uses cached history.
+  await page
+    .getByRole("textbox", { name: "Message", exact: true })
+    .fill("An unsent draft");
+  await page.getByRole("button", { name: "general", exact: true }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Message", exact: true }),
+  ).toBeVisible();
+  const beforeRevisit = historyRequests;
+  await page
+    .getByRole("button", { name: "Direct messages", exact: true })
+    .first()
+    .click();
+  await page.locator(".dm-card").filter({ hasText: "Alex Rivera" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Message", exact: true }),
+  ).toHaveValue("An unsent draft");
+  await expect(page.getByText(dm, { exact: true })).toBeVisible();
+  expect(historyRequests).toBe(beforeRevisit);
+  console.log("PASS warm navigation without a history request; draft restored");
+  await page.getByRole("button", { name: "My posts", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Morgan Chen", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(`${marker} edited`, { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(incoming, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(dm, { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: "test-results/profile-graphite.png" });
+  await page.getByRole("button", { name: "Include DMs", exact: true }).click();
+  await expect(page.getByText(dm, { exact: true })).toBeVisible();
+  const dmCard = page.getByRole("article").filter({ hasText: dm });
+  await dmCard.getByRole("button", { name: "Open conversation" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Message", exact: true }),
+  ).toHaveValue("An unsent draft");
+  console.log(
+    "PASS own profile, author filtering, channel/DM scope and opening conversations",
+  );
+  await page.locator(".member").filter({ hasText: "Alex Rivera" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Alex Rivera", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(incoming, { exact: true })).toBeVisible();
+  await expect(page.getByText(`${marker} edited`, { exact: true })).toHaveCount(
+    0,
+  );
+  console.log("PASS member profiles");
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.getByRole("button", { name: "light theme", exact: true }).click();
+  await page
+    .getByRole("button", { name: "violet accent", exact: true })
+    .click();
+  await page.getByRole("button", { name: "compact", exact: true }).click();
+  await page.getByLabel("Message text size").fill("17");
+  await page.getByLabel("Smooth transitions").uncheck();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.locator("html")).toHaveAttribute("data-accent", "violet");
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
+  await page.screenshot({ path: "test-results/appearance-light.png" });
+  await page.keyboard.press("Escape");
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await page.screenshot({ path: "test-results/profile-light.png" });
   await page.reload();
   await expect(page.getByText("Live", { exact: true })).toBeVisible({
     timeout: 15000,
   });
-  console.log("PASS localStorage session restore");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.locator("html")).toHaveAttribute("data-accent", "violet");
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+  expect(
+    await page
+      .locator("html")
+      .evaluate((el) => el.style.getPropertyValue("--message-size")),
+  ).toBe("17px");
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page
+    .getByRole("button", { name: "midnight theme", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Close appearance" }).click();
+  await page.screenshot({ path: "test-results/midnight.png" });
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.getByRole("button", { name: "Reset appearance" }).click();
+  await page.getByRole("button", { name: "Close appearance" }).click();
+  console.log(
+    "PASS saved themes, accents, density, font size, reduced motion and session restore",
+  );
   // A second local identity exercises independent credentials and queues.
   await page.getByRole("button", { name: "Add organization" }).click();
   await page.getByLabel("Organization URL").fill(account.url);
@@ -251,11 +349,30 @@ try {
   await expect(
     page.getByRole("textbox", { name: "Message", exact: true }),
   ).toBeVisible();
+  await expect.poll(() => page.locator(".message").count()).toBeGreaterThan(0);
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(overflow).toBe(false);
   await page.screenshot({ path: "test-results/mobile.png" });
+  await page.getByRole("button", { name: "Toggle channels" }).click();
+  await page.getByRole("button", { name: "My posts", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Morgan Chen", exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.locator(".activity-card").count())
+    .toBeGreaterThan(0);
+  await page.screenshot({ path: "test-results/profile-mobile.png" });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+  ).toBe(false);
+  await page.getByRole("button", { name: "Toggle channels" }).click();
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.screenshot({ path: "test-results/appearance-mobile.png" });
+  await page.getByRole("button", { name: "Close appearance" }).click();
   expect(errors).toEqual([]);
   console.log("PASS mobile layout; no runtime errors");
 } catch (e) {

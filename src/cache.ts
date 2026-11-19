@@ -190,7 +190,11 @@ export class OrgCache {
     const key = JSON.stringify(view);
     this.entries.delete(key);
     this.entries.set(key, e);
-    if (e.pending) return e.pending;
+    if (e.pending && !force) return e.pending;
+    if (e.pending) {
+      e.controller?.abort();
+      e.pending = undefined;
+    }
     if (
       !force &&
       !e.snapshot.stale &&
