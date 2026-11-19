@@ -51,16 +51,18 @@ function server(history: () => Message[], status = () => 200) {
       });
     const all = history();
     const anchor = call.anchor === "newest" ? Infinity : Number(call.anchor);
-    const before = all.filter((m) =>
-      call.include ? m.id <= anchor : m.id < anchor,
-    );
+    const before = all.filter((m) => m.id < anchor);
     const after = all.filter((m) => m.id > anchor);
     const pre = before.slice(Math.max(0, before.length - call.before)),
       post = after.slice(0, call.after);
     return new Response(
       JSON.stringify({
         result: "success",
-        messages: [...pre, ...post],
+        messages: [
+          ...pre,
+          ...(call.include ? all.filter((m) => m.id === anchor) : []),
+          ...post,
+        ],
         found_oldest: pre.length === before.length,
         found_newest: post.length === after.length,
       }),
@@ -72,6 +74,167 @@ function server(history: () => Message[], status = () => 200) {
 const ids = (cache: OrgCache, view: View = channel) =>
   cache.snapshot(view).messages.map((m) => m.id);
 afterEach(() => vi.unstubAllGlobals());
+
+/** Delay one intercepted response while events arrive. No network is used. */
+function holdNextResponse() {
+  const fetch = globalThis.fetch;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let held = false;
+  vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+    const response = await fetch(...args);
+    if (!held) {
+      held = true;
+      await gate;
+    }
+    return response;
+  });
+  return release;
+}
+
+async function historyWindow() {
+  const cache = new OrgCache(account);
+  cache.setMutedUsers([9]);
+  const stop = cache.subscribe(channel, () => {});
+  await cache.load(channel);
+  cache.ui(channel).atBottom = false;
+  while (ids(cache).length < MAX_ACTIVE_MESSAGES) await cache.older(channel);
+  await cache.older(channel);
+  Object.assign(cache.ui(channel), {
+    atBottom: false,
+    anchorId: 400,
+    anchorTop: -12,
+    scrollTop: 2000,
+  });
+  await cache.load(channel, true);
+  expect(cache.snapshot(channel).hasNewer).toBe(true);
+  return { cache, stop };
+}
+
+describe("history gaps and retained reading positions", () => {
+  it("skips muted older pages without replaying a live message across the gap", async () => {
+    let history = range(1, 1000);
+    const calls = server(() => history);
+    const { cache } = await historyWindow();
+    const start = ids(cache)[0],
+      end = ids(cache).at(-1)!;
+    history = history.map((m) =>
+      m.id >= start - 60 && m.id < start ? { ...m, sender_id: 9 } : m,
+    );
+    const release = holdNextResponse();
+    const pending = cache.older(channel);
+    cache.events([
+      { id: 1, type: "message", message: make(1001) },
+      { id: 2, type: "delete_message", message_ids: [start - 70] },
+    ]);
+    release();
+    await pending;
+    expect(calls.at(-1)!.anchor).toBe(String(start - 60));
+    expect(ids(cache)).not.toContain(1001);
+    expect(ids(cache)).not.toContain(start - 70);
+    expect(ids(cache).at(-1)).toBe(end);
+    expect(ids(cache)[0]).toBe(start - 120);
+  });
+
+  it.each(["newer", "recovery"] as const)(
+    "keeps %s replay inside the fetched interval",
+    async (operation) => {
+      server(() => range(1, 1000));
+      const { cache } = await historyWindow();
+      const release = holdNextResponse();
+      const pending =
+        operation === "newer"
+          ? cache.newer(channel)
+          : cache.load(channel, true);
+      cache.events([
+        { id: 1, type: "message", message: make(1001) },
+        { id: 2, type: "message", message: make(50) },
+        {
+          id: 3,
+          type: "delete_message",
+          message_ids: [operation === "newer" ? 710 : 410],
+        },
+      ]);
+      release();
+      await pending;
+      expect(ids(cache)).not.toContain(1001);
+      expect(ids(cache)).not.toContain(50);
+      expect(ids(cache)).not.toContain(operation === "newer" ? 710 : 410);
+      expect(ids(cache).at(-1)).toBe(operation === "newer" ? 760 : 700);
+      expect(cache.snapshot(channel).hasNewer).toBe(true);
+    },
+  );
+
+  it("includes in-flight live events when forward pagination reaches the live tail", async () => {
+    server(() => range(1, 1000));
+    const { cache } = await historyWindow();
+    while (ids(cache).at(-1)! < 940) await cache.newer(channel);
+    const release = holdNextResponse();
+    const pending = cache.newer(channel);
+    cache.events([{ id: 1, type: "message", message: make(1001) }]);
+    release();
+    await pending;
+    expect(ids(cache).at(-1)).toBe(1001);
+    expect(cache.snapshot(channel).hasNewer).toBe(false);
+  });
+
+  it.each([false, true])(
+    "retains a hidden reading window and row offset (small=%s)",
+    async (small) => {
+      let history = range(1, 1000);
+      const calls = server(() => history);
+      const { cache, stop } = await historyWindow();
+      if (small)
+        cache.events([
+          {
+            id: 1,
+            type: "delete_message",
+            message_ids: range(500, 699).map((m) => m.id),
+          },
+        ]);
+      const saved = { ...cache.ui(channel) };
+      stop();
+      expect(ids(cache).length).toBeLessThanOrEqual(300);
+      expect(ids(cache)).toContain(400);
+      expect(cache.ui(channel)).toEqual(saved);
+      const count = calls.length;
+      cache.subscribe(channel, () => {});
+      await cache.load(channel);
+      expect(calls).toHaveLength(count);
+      expect(ids(cache)).toContain(400);
+      // Recovery revalidates this retained range and removes inaccessible/deleted rows.
+      history = history.filter((m) => m.id !== 401);
+      cache.invalidate();
+      await cache.load(channel);
+      expect(calls.at(-1)!.anchor).toBe("400");
+      expect(ids(cache)).toContain(400);
+      expect(ids(cache)).not.toContain(401);
+    },
+  );
+
+  it.each(["older", "newer", "recovery"] as const)(
+    "does not revive revoked data from pending %s",
+    async (operation) => {
+      server(() => range(1, 1000));
+      const { cache } = await historyWindow();
+      cache.ui(channel).text = "private draft";
+      const release = holdNextResponse();
+      const pending =
+        operation === "recovery"
+          ? cache.load(channel, true)
+          : cache[operation](channel);
+      cache.purgeStreams([3]);
+      release();
+      await pending;
+      expect(ids(cache)).toEqual([]);
+      expect(cache.ui(channel).anchorId).toBeUndefined();
+      expect(cache.ui(channel).anchorTop).toBeUndefined();
+      expect(cache.ui(channel).text).toBe("");
+    },
+  );
+});
 
 describe("pagination cursors ignore client-side filtering", () => {
   it("pages past a newest page that holds only muted messages", async () => {

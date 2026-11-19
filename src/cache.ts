@@ -34,6 +34,8 @@ type Entry = {
     atBottom: boolean;
     /** The first message in view while reading history, for revalidation. */
     anchorId?: number;
+    /** Its offset from the scroller's top, retained across navigation. */
+    anchorTop?: number;
   };
   view: View;
   snapshot: MessageSnapshot;
@@ -235,7 +237,13 @@ export class OrgCache {
   private replayAvailable(started: number) {
     return started >= this.sequence - this.journal.length;
   }
-  private replay(messages: Message[], started: number, view: View) {
+  private replay(
+    messages: Message[],
+    started: number,
+    view: View,
+    min: number,
+    max: number,
+  ) {
     for (const item of this.journal)
       if (item.seq > started)
         messages = applyMessageEvent(
@@ -244,7 +252,11 @@ export class OrgCache {
           view,
           this.account.userId,
         );
-    return this.filter(messages);
+    // Events outside the fetched interval are separated by an unfetched gap.
+    // A live-tail response may extend through Infinity; a history page may not.
+    return messages.filter(
+      (m) => m.id >= min && m.id <= max && this.visible(m),
+    );
   }
   private cancelEntry(e: Entry) {
     e.version++;
@@ -265,20 +277,32 @@ export class OrgCache {
   private trim(e: Entry, keep?: "newest" | "oldest") {
     const { messages } = e.snapshot;
     if (!e.listeners.size) {
-      // A hidden view keeps only the newest page. A window scrolled back in
-      // history is refetched from the newest end when it is shown again.
-      if (!e.snapshot.hasNewer && messages.length <= MAX_MESSAGES) return;
-      const kept = messages.slice(-MAX_MESSAGES);
+      if (messages.length <= MAX_MESSAGES) return;
+      // Keep a bounded interval around the reader, not a different live tail.
+      // The saved row offset lets the UI restore after rows before it are cut.
+      const anchor = e.ui.atBottom
+          ? -1
+          : messages.findIndex((m) => m.id === e.ui.anchorId),
+        start =
+          anchor < 0
+            ? messages.length - MAX_MESSAGES
+            : Math.max(
+                0,
+                Math.min(
+                  messages.length - MAX_MESSAGES,
+                  anchor - Math.floor(MAX_MESSAGES / 2),
+                ),
+              ),
+        kept = messages.slice(start, start + MAX_MESSAGES),
+        droppedNewer = start + MAX_MESSAGES < messages.length;
       e.snapshot = {
         ...e.snapshot,
         messages: kept,
-        hasOlder: e.snapshot.hasOlder || kept.length < messages.length,
-        ...(e.snapshot.hasNewer ? { stale: true } : {}),
+        hasOlder: e.snapshot.hasOlder || start > 0,
+        hasNewer: e.snapshot.hasNewer || droppedNewer,
       };
-      if (kept.length < messages.length) e.oldest = kept[0]?.id;
-      e.ui.scrollTop = 0;
-      e.ui.atBottom = true;
-      e.ui.anchorId = undefined;
+      if (start > 0) e.oldest = kept[0].id;
+      if (droppedNewer) e.newest = kept[kept.length - 1].id;
       return;
     }
     if (messages.length <= MAX_ACTIVE_MESSAGES) return;
@@ -349,6 +373,7 @@ export class OrgCache {
     e.ui.scrollTop = 0;
     e.ui.atBottom = true;
     e.ui.anchorId = undefined;
+    e.ui.anchorTop = undefined;
     e.oldest = e.newest = undefined;
     this.publish(e, { ...emptySnapshot(), error });
   }
@@ -448,12 +473,15 @@ export class OrgCache {
           if (!this.replayAvailable(flight.started)) continue;
           const bounds = idBounds(data.messages),
             hasNewer = at >= 0 && data.found_newest === false;
-          let messages = this.replay(data.messages, flight.started, view);
-          // Live messages after a history window are separated from it by a gap.
-          if (hasNewer) {
-            const end = bounds?.[1] ?? anchorId!;
-            messages = messages.filter((m) => m.id <= end);
-          }
+          const messages = this.replay(
+            data.messages,
+            flight.started,
+            view,
+            data.found_oldest
+              ? -Infinity
+              : (bounds?.[0] ?? anchorId ?? Infinity),
+            hasNewer ? (bounds?.[1] ?? anchorId!) : Infinity,
+          );
           e.oldest = bounds?.[0];
           e.newest = bounds?.[1];
           this.publish(
@@ -545,9 +573,17 @@ export class OrgCache {
             await this.load(view, true);
             return;
           }
-          older.unshift(...this.replay(data.messages, flight.started, view));
           foundOldest = data.found_oldest;
           const bounds = idBounds(data.messages);
+          older.unshift(
+            ...this.replay(
+              data.messages,
+              flight.started,
+              view,
+              foundOldest ? -Infinity : (bounds?.[0] ?? anchor),
+              anchor - 1,
+            ),
+          );
           if (bounds) anchor = bounds[0];
           if (foundOldest || older.length || !bounds) break;
         }
@@ -622,11 +658,15 @@ export class OrgCache {
             return;
           }
           const bounds = idBounds(data.messages);
-          if (bounds) anchor = bounds[1];
           foundNewest = data.found_newest;
-          let page = this.replay(data.messages, flight.started, view);
-          // Live messages after this page are separated from it by a gap.
-          if (!foundNewest) page = page.filter((m) => m.id <= anchor);
+          const page = this.replay(
+            data.messages,
+            flight.started,
+            view,
+            anchor + 1,
+            foundNewest ? Infinity : (bounds?.[1] ?? anchor),
+          );
+          if (bounds) anchor = bounds[1];
           newer.push(...page);
           if (foundNewest || newer.length || !bounds) break;
         }
@@ -676,8 +716,12 @@ export class OrgCache {
         const end = entry.snapshot.hasNewer
           ? (entry.newest ?? current.at(-1)?.id ?? 0)
           : Infinity;
+        const start = entry.snapshot.hasOlder
+          ? (entry.oldest ?? current[0]?.id ?? Infinity)
+          : -Infinity;
         let messages: Message[];
-        if (incoming && incoming.id > end) messages = current;
+        if (incoming && (incoming.id > end || incoming.id < start))
+          messages = current;
         else if (
           incoming &&
           work.has(entry) &&
@@ -693,6 +737,7 @@ export class OrgCache {
         if (moved)
           for (const message of known.values())
             if (
+              message.id >= start &&
               message.id <= end &&
               this.visible(message) &&
               matchesView(message, entry.view, me)

@@ -979,7 +979,16 @@ const Conversation = memo(function Conversation({
   );
   // Message bodies fill in their own layout effects, which run before this one.
   useLayoutEffect(() => {
-    if (scroller.current) scroller.current.scrollTop = saved.scrollTop;
+    const el = scroller.current;
+    if (!el) return;
+    if (
+      !saved.atBottom &&
+      saved.anchorId !== undefined &&
+      saved.anchorTop !== undefined &&
+      restoreAnchor(el, { id: String(saved.anchorId), top: saved.anchorTop })
+    )
+      return;
+    el.scrollTop = saved.scrollTop;
   }, [saved]);
   // Rows are added and dropped at both ends by paging, live events and
   // revalidation. Away from the live end, keep the row being read in place.
@@ -988,6 +997,7 @@ const Conversation = memo(function Conversation({
     const el = scroller.current;
     reading.current = el ? readingAnchor(el) : null;
     saved.anchorId = reading.current ? Number(reading.current.id) : undefined;
+    saved.anchorTop = reading.current?.top;
   };
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -1067,6 +1077,7 @@ const Conversation = memo(function Conversation({
     atBottom.current = true;
     saved.atBottom = true;
     saved.anchorId = undefined;
+    saved.anchorTop = undefined;
     reading.current = null;
     setNewBelow(false);
     if (hasNewer) {
