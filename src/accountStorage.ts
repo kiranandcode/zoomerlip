@@ -1,3 +1,4 @@
+import { clearNotificationPreferences } from "./notifications/preferences";
 import { clearThreadMutes } from "./topicPreferences";
 import type { Account } from "./types";
 export const legacyAccountKey = "zoomerlip.accounts.v1";
@@ -84,6 +85,7 @@ export function removeAccount(id: string) {
     /* Tombstone still revokes the session. */
   }
   clearThreadMutes(id);
+  clearNotificationPreferences(id);
   window.dispatchEvent(new Event("zoomerlip-accounts"));
 }
 export function accountStorageEvent(e: StorageEvent) {

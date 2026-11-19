@@ -1,3 +1,4 @@
+import { NotificationSettings } from "../notifications/NotificationSettings";
 import { useEffect, useState } from "react";
 import { PresenceStatus, StatusEditor } from "../live/PresenceStatus";
 import { ProfileEditor } from "./ProfileEditor";
@@ -107,6 +108,12 @@ export function ProfilePage({
         <h1>{name}</h1>
         <PresenceStatus account={account} userId={userId} />
         {own && <StatusEditor key={account.id} account={account} />}
+        {own && (
+          <NotificationSettings
+            key={`notifications:${account.id}`}
+            account={account}
+          />
+        )}
         <p>
           {user?.email && !/user\d+@/.test(user.email)
             ? user.email

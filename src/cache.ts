@@ -400,7 +400,7 @@ export class OrgCache {
     }
     return false;
   }
-  load(view: View, force = false): Promise<void> {
+  load(view: View, force = false, requestedAnchor?: number): Promise<void> {
     const e = this.entry(view),
       key = viewKey(view);
     if (!this.allowed(view)) {
@@ -439,17 +439,22 @@ export class OrgCache {
           : -1,
       span = (n: number, most: number) => Math.min(Math.max(n, PAGE), most);
     const range =
-      at >= 0
-        ? {
-            anchor: anchorId!,
-            num_before: span(at, MAX_ACTIVE_MESSAGES / 2),
-            num_after: span(retained.length - at - 1, MAX_ACTIVE_MESSAGES / 2),
-          }
-        : {
-            anchor: "newest",
-            num_before: span(retained.length, MAX_MESSAGES),
-            num_after: 0,
-          };
+      requestedAnchor !== undefined
+        ? { anchor: requestedAnchor, num_before: PAGE, num_after: PAGE }
+        : at >= 0
+          ? {
+              anchor: anchorId!,
+              num_before: span(at, MAX_ACTIVE_MESSAGES / 2),
+              num_after: span(
+                retained.length - at - 1,
+                MAX_ACTIVE_MESSAGES / 2,
+              ),
+            }
+          : {
+              anchor: "newest",
+              num_before: span(retained.length, MAX_MESSAGES),
+              num_after: 0,
+            };
     e.pending = (async () => {
       try {
         for (let attempt = 0; attempt < 3; attempt++) {

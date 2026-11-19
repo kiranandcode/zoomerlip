@@ -1,3 +1,5 @@
+import { useNotificationNavigation } from "./notifications/navigation";
+import type { NotificationTarget } from "./notifications/navigation";
 import {
   memo,
   useCallback,
@@ -91,6 +93,11 @@ export default function App() {
   const report = useRef((id: string, state: Session) =>
     setSessions((s) => ({ ...s, [id]: state })),
   ).current;
+  const notificationTarget = useNotificationNavigation(
+    accounts,
+    setActiveId,
+    setStorageError,
+  );
   const unreadCounts = useMemo(
     () =>
       Object.fromEntries(
@@ -253,6 +260,7 @@ export default function App() {
           key={active.id}
           account={active}
           session={sessions[active.id]}
+          notificationTarget={notificationTarget}
           onLogout={logout}
           showNav={showNav}
           setShowNav={setShowNav}
@@ -307,9 +315,11 @@ const Workspace = memo(function Workspace({
   onLogout,
   showNav,
   setShowNav,
+  notificationTarget,
 }: {
   account: Account;
   session?: Session;
+  notificationTarget?: NotificationTarget;
   onLogout: () => void;
   showNav: boolean;
   setShowNav: React.Dispatch<React.SetStateAction<boolean>>;
@@ -325,6 +335,12 @@ const Workspace = memo(function Workspace({
   const [appearance, setAppearance] = useState(false);
   const [topicLimits, setTopicLimits] = useState<Record<number, number>>({});
   const [view, setView] = useState<View>({ type: "home" });
+  useEffect(() => {
+    if (notificationTarget?.accountId === account.id) {
+      setView(notificationTarget.view);
+      setShowNav(false);
+    }
+  }, [notificationTarget, account.id, setShowNav]);
   const [expanded, setExpanded] = useState<number[]>([]),
     [topics, setTopics] = useState<Record<number, Topic[]>>({});
   const [filter, setFilter] = useState(""),
@@ -1104,9 +1120,6 @@ const Conversation = memo(function Conversation({
     }
   return (
     <>
-      {view.type !== "home" && view.type !== "profile" && (
-        <TypingIndicator account={account} view={view} users={users} />
-      )}
       {view.type !== "home" && view.type !== "profile" && (
         <a
           className="skip-composer"

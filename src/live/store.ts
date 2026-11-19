@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Account, View, ZulipEvent } from "../types";
+import type { Account, Channel, User, View, ZulipEvent } from "../types";
 
 export type UserStatus = {
   status_text?: string;
@@ -9,6 +9,9 @@ export type UserStatus = {
 };
 export type Presence = { active_timestamp?: number; idle_timestamp?: number };
 export type LiveState = {
+  channels: Channel[];
+  names: Record<string, string>;
+  followed: string[];
   ready: boolean;
   featureLevel: number;
   typing: { key: string; user: number; until: number }[];
@@ -22,6 +25,9 @@ export type LiveState = {
   error: string;
 };
 export const emptyLive: LiveState = {
+  channels: [],
+  names: {},
+  followed: [],
   ready: false,
   featureLevel: 0,
   typing: [],
@@ -62,6 +68,22 @@ export class LiveStore {
         ? Math.min(300000, Math.max(1000, data[key] as number))
         : fallback;
     this.update({
+      channels: (data.subscriptions || []) as Channel[],
+      names: Object.fromEntries(
+        ((data.realm_users || []) as User[])
+          .slice(0, 10000)
+          .map((u) => [u.user_id, u.full_name]),
+      ),
+      followed: (
+        (data.user_topics || []) as {
+          stream_id: number;
+          topic_name: string;
+          visibility_policy: number;
+        }[]
+      )
+        .filter((t) => t.visibility_policy === 3)
+        .slice(-10000)
+        .map((t) => JSON.stringify([t.stream_id, t.topic_name.toLowerCase()])),
       ready: true,
       featureLevel: Number(data.zulip_feature_level) || 0,
       statuses: boundedRecord(data.user_status),
@@ -85,6 +107,27 @@ export class LiveStore {
   }
   events(events: ZulipEvent[], account: Account) {
     for (const e of events) {
+      if (e.type === "realm_user") {
+        const person = e.person as User;
+        if (person?.user_id) {
+          const names = { ...this.state.names };
+          if (e.op === "remove") delete names[person.user_id];
+          else if (person.full_name) names[person.user_id] = person.full_name;
+          this.update({ names });
+        }
+      }
+      if (e.type === "user_topic") {
+        const key = JSON.stringify([
+          e.stream_id,
+          String(e.topic_name).toLowerCase(),
+        ]);
+        this.update({
+          followed: [
+            ...this.state.followed.filter((t) => t !== key),
+            ...(e.visibility_policy === 3 ? [key] : []),
+          ].slice(-10000),
+        });
+      }
       if (
         ["subscription", "stream", "realm_user"].includes(e.type) &&
         ["remove", "delete"].includes(String(e.op))
@@ -203,7 +246,9 @@ const settingKeys = [
   "enable_stream_desktop_notifications",
   "enable_stream_sounds",
   "enable_followed_topic_desktop_notifications",
-  "enable_followed_topic_sounds",
+  "enable_followed_topic_audible_notifications",
+  "enable_followed_topic_wildcard_mentions_notify",
+  "pm_content_in_desktop_notifications",
   "wildcard_mentions_notify",
   "realm_enable_read_receipts",
 ];

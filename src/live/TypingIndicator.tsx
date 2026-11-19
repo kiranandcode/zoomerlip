@@ -14,13 +14,12 @@ export function TypingIndicator({
   const names = state.typing
     .filter((t) => t.key === key && t.until > Date.now())
     .slice(0, 3)
-    .map(
-      (t) => users.find((u) => u.user_id === t.user)?.full_name || "Someone",
-    );
+    .map((t) => users.find((u) => u.user_id === t.user)?.full_name || "");
+  const visibleNames = names.filter(Boolean);
   return (
     <div className="typing-indicator" role="status" aria-live="polite">
-      {names.length
-        ? `${names.join(", ")} ${names.length === 1 ? "is" : "are"} typing…`
+      {visibleNames.length
+        ? `${visibleNames.join(", ")} ${visibleNames.length === 1 ? "is" : "are"} typing…`
         : ""}
     </div>
   );

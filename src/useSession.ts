@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getCache } from "./cache";
 import { clearUploadCache } from "./uploads";
 import { ApiError, pause, request } from "./api";
+import { NotificationDelivery } from "./notifications/delivery";
 import { startPresence } from "./live/presence";
 import { liveStore, releaseLive } from "./live/store";
 import { initialSession, SessionModel } from "./sessionModel";
@@ -19,6 +20,11 @@ export function useSession(account: Account, active: boolean): Session {
       model = new SessionModel(),
       live = liveStore(account.id);
     live.clear();
+    const notifications = new NotificationDelivery(
+      account,
+      () => model.state,
+      () => activeRef.current,
+    );
     const stopPresence = startPresence(
       account,
       live,
@@ -41,6 +47,9 @@ export function useSession(account: Account, active: boolean): Session {
     const lock = (message: string) => {
       cache.lock();
       live.clear();
+      notifications.dispose();
+      stopPresence();
+      lifetime.abort();
       clearUploadCache(account.id);
       model.state = {
         ...initialSession,
@@ -128,6 +137,7 @@ export function useSession(account: Account, active: boolean): Session {
                   )
                 : 90000;
             model.register(data, account.name);
+            notifications.clear();
             live.register(data as unknown as Record<string, unknown>);
             cache.unlock();
             const registered = new Set(
@@ -165,6 +175,9 @@ export function useSession(account: Account, active: boolean): Session {
             previous = before.channels.map((c) => c.stream_id);
           const next = model.apply(events, account.userId);
           live.events(events, account);
+          if (next.channels !== before.channels)
+            live.update({ channels: next.channels });
+          notifications.events(events);
           if (next.channels !== before.channels) {
             const subscribed = new Set(next.channels.map((c) => c.stream_id));
             cache.purgeStreams(previous.filter((id) => !subscribed.has(id)));
@@ -211,6 +224,7 @@ export function useSession(account: Account, active: boolean): Session {
       finished = true;
       clearInterval(expiry);
       stopPresence();
+      notifications.dispose();
       releaseLive(account.id);
       lifetime.abort();
       poll?.abort();

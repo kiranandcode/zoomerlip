@@ -104,7 +104,7 @@ function ReceiptDialog({
       ) : ids ? (
         <p>
           {ids.length
-            ? `Read by user IDs: ${ids.join(", ")}`
+            ? `Read by: ${ids.map((id) => live.names[id] || `User ${id}`).join(", ")}`
             : "No shared read receipts."}
         </p>
       ) : (

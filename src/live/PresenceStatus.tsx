@@ -3,6 +3,19 @@ import { request } from "../api";
 import type { Account } from "../types";
 import { liveStore, presenceLabel, useLive } from "./store";
 
+function statusEmoji(code?: string, type?: string) {
+  if (
+    type !== "unicode_emoji" ||
+    !code ||
+    !/^[a-f0-9]{1,6}(-[a-f0-9]{1,6}){0,15}$/i.test(code)
+  )
+    return "";
+  try {
+    return String.fromCodePoint(...code.split("-").map((c) => parseInt(c, 16)));
+  } catch {
+    return "";
+  }
+}
 export function PresenceStatus({
   account,
   userId,
@@ -19,7 +32,8 @@ export function PresenceStatus({
           ? "Invisible"
           : presenceLabel(state, userId)
         : "Presence unavailable"}
-      {status?.emoji_name && ` · :${status.emoji_name}:`}
+      {status?.emoji_name &&
+        ` · ${statusEmoji(status.emoji_code, status.reaction_type) || `:${status.emoji_name}:`}`}
       {status?.status_text && ` · ${status.status_text}`}
     </span>
   );

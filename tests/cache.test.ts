@@ -247,3 +247,18 @@ it("a forced reconciliation replaces an in-flight request without accepting its 
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(cache.snapshot(channel).messages.map((m) => m.id)).toEqual([20]);
 });
+
+it("loads notification context around an uncached anchor within the bounded cache", async () => {
+  const fetch = vi.fn().mockResolvedValue(response([message]));
+  vi.stubGlobal("fetch", fetch);
+  const cache = new OrgCache(account);
+  cache.ui(channel).anchorId = message.id;
+  cache.ui(channel).atBottom = false;
+  await cache.load(channel, true, message.id);
+  const query = new URL(fetch.mock.calls[0][0]).searchParams;
+  expect(query.get("anchor")).toBe(String(message.id));
+  expect(Number(query.get("num_before"))).toBeGreaterThan(0);
+  expect(Number(query.get("num_after"))).toBeGreaterThan(0);
+  expect(cache.snapshot(channel).messages[0].id).toBe(message.id);
+  cache.dispose();
+});
