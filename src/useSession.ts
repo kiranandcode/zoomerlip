@@ -1,3 +1,4 @@
+import { invalidateOrganisation } from "./organisation/lifecycle";
 import { useEffect, useState } from "react";
 import { getCache } from "./cache";
 import { clearUploadCache } from "./uploads";
@@ -27,6 +28,7 @@ export function useSession(account: Account, _active: boolean): Session {
     };
     const lock = (message: string) => {
       cache.lock();
+      invalidateOrganisation(account.id);
       clearUploadCache(account.id);
       model.state = {
         ...initialSession,
@@ -107,6 +109,7 @@ export function useSession(account: Account, _active: boolean): Session {
                   )
                 : 90000;
             model.register(data, account.name);
+            invalidateOrganisation(account.id);
             cache.unlock();
             const registered = new Set(
               model.state.channels.map((c) => c.stream_id),
@@ -142,6 +145,7 @@ export function useSession(account: Account, _active: boolean): Session {
           const before = model.state,
             previous = before.channels.map((c) => c.stream_id);
           const next = model.apply(events, account.userId);
+          invalidateOrganisation(account.id, events);
           if (next.channels !== before.channels) {
             const subscribed = new Set(next.channels.map((c) => c.stream_id));
             cache.purgeStreams(previous.filter((id) => !subscribed.has(id)));

@@ -26,13 +26,15 @@ import {
   Palette,
   Lock,
 } from "lucide-react";
+import { SearchPanel } from "./organisation/SearchPanel";
+import "./organisation/organisation.css";
 import { clearCache, getCache } from "./cache";
 import { useMessages } from "./useMessages";
 import { Avatar, initials } from "./components/Avatar";
 import { ProfilePage } from "./components/ProfilePage";
 import { Appearance } from "./components/AppearanceLoader";
 import { MemberList } from "./components/MemberList";
-import { readAccounts } from "./api";
+import { getFeatureLevel, readAccounts } from "./api";
 import {
   putAccount,
   removeAccount,
@@ -247,7 +249,7 @@ export default function App() {
           <span className="rail-bottom">Z.</span>
         </nav>
         <Workspace
-          key={active.id}
+          key={`${active.id}:${active.apiKey}`}
           account={active}
           session={sessions[active.id]}
           onLogout={logout}
@@ -320,6 +322,48 @@ const Workspace = memo(function Workspace({
   const [topicMenu, setTopicMenu] = useState<TopicMenuTarget | null>(null);
   const closeTopicMenu = useCallback(() => setTopicMenu(null), []);
   const [appearance, setAppearance] = useState(false);
+  const [panel, setPanel] = useState<"search" | "starred" | "mentioned" | null>(
+    null,
+  );
+  const openPanel = useCallback(
+    (next: "search" | "starred" | "mentioned") => {
+      setPanel(next);
+      setShowNav(false);
+    },
+    [setShowNav],
+  );
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (
+        e.defaultPrevented ||
+        e.isComposing ||
+        document.querySelector("dialog[open]")
+      )
+        return;
+      const typing =
+        e.target instanceof HTMLElement &&
+        (e.target.isContentEditable ||
+          !!e.target.closest("input, textarea, select"));
+      if (
+        !typing &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        ["/", "*", "@"].includes(e.key)
+      ) {
+        e.preventDefault();
+        openPanel(
+          e.key === "/" ? "search" : e.key === "*" ? "starred" : "mentioned",
+        );
+      }
+      if (e.key === "Escape" && !typing && panel && !showNav) {
+        e.preventDefault();
+        setPanel(null);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [openPanel, panel, showNav]);
   const [topicLimits, setTopicLimits] = useState<Record<number, number>>({});
   const [view, setView] = useState<View>({ type: "home" });
   const [expanded, setExpanded] = useState<number[]>([]),
@@ -461,6 +505,7 @@ const Workspace = memo(function Workspace({
       : undefined;
   useEffect(() => {
     const home = () => {
+      setPanel(null);
       setView({ type: "home" });
       setShowNav(false);
     };
@@ -494,6 +539,7 @@ const Workspace = memo(function Workspace({
   }, [cache, expandedKey, topicVersion]);
   const select = useCallback(
     (next: View) => {
+      setPanel(null);
       setView(next);
       setShowNav(false);
     },
@@ -592,6 +638,16 @@ const Workspace = memo(function Workspace({
           />
         </div>
         <div className="nav-scroll">
+          <button className="nav-row" onClick={() => openPanel("search")}>
+            <Search size={18} />
+            Search messages <small>/</small>
+          </button>
+          <button className="nav-row" onClick={() => openPanel("starred")}>
+            ★ Starred messages
+          </button>
+          <button className="nav-row" onClick={() => openPanel("mentioned")}>
+            @ Mentions
+          </button>
           <button
             className={`nav-row inbox ${view.type === "home" || view.type === "dm" ? "active" : ""}`}
             onClick={() => select({ type: "home" })}
@@ -794,7 +850,24 @@ const Workspace = memo(function Workspace({
           ) : (
             <AtSign className="header-hash" size={24} />
           )}
-          <strong>{title}</strong>
+          <strong>
+            {panel === "search"
+              ? "Message search"
+              : panel === "starred"
+                ? "Starred messages"
+                : panel === "mentioned"
+                  ? "Mentions"
+                  : title}
+          </strong>
+          {panel && (
+            <button
+              className="icon-button"
+              aria-label="Back to conversation"
+              onClick={() => setPanel(null)}
+            >
+              <X size={18} />
+            </button>
+          )}
           {view.type === "channel" && selectedChannel?.invite_only && (
             <span className="private-label">Private</span>
           )}
@@ -838,6 +911,15 @@ const Workspace = memo(function Workspace({
           <div className="empty-state" role="status">
             Connecting securely…
           </div>
+        ) : panel ? (
+          <SearchPanel
+            key={panel}
+            account={account}
+            channels={channels}
+            featureLevel={getFeatureLevel(account.url)}
+            special={panel === "search" ? undefined : panel}
+            onSelect={select}
+          />
         ) : (
           <Conversation
             key={JSON.stringify(view)}
