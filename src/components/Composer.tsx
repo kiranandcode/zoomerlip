@@ -1,3 +1,4 @@
+import { WidgetComposer } from "../messaging/WidgetComposer";
 import { ProductivityPanel } from "../messaging/ProductivityPanel";
 import type { ProductivityKind } from "../messaging/productivity";
 import { quoteMessage } from "../messaging/actions";
@@ -74,6 +75,7 @@ export const Composer = memo(
     const [text, setText] = useState(initial?.text ?? saved.text),
       [topic, setTopic] = useState(initial?.topic ?? saved.topic),
       [showDrafts, setShowDrafts] = useState(false),
+      [showWidget, setShowWidget] = useState(false),
       [productivity, setProductivity] = useState<ProductivityKind | null>(null),
       [sending, setSending] = useState(false);
     const input = useRef<HTMLTextAreaElement>(null),
@@ -286,6 +288,9 @@ export const Composer = memo(
         </div>
         <div className="messaging-tools">
           {attachments.button}
+          <button type="button" onClick={() => setShowWidget(!showWidget)}>
+            Poll / to-do
+          </button>
           <button
             type="button"
             onClick={() => setProductivity("scheduled_messages")}
@@ -324,6 +329,23 @@ export const Composer = memo(
               changeText(`${saved.text}${saved.text ? "\n" : ""}${value}`)
             }
             onClose={() => setProductivity(null)}
+          />
+        )}
+        {showWidget && (
+          <WidgetComposer
+            account={account}
+            onClose={() => setShowWidget(false)}
+            onCompose={(value) => {
+              if (text.trim())
+                saveDraft(account.id, {
+                  id: crypto.randomUUID(),
+                  view,
+                  text,
+                  topic,
+                  updated: Date.now(),
+                });
+              changeText(value);
+            }}
           />
         )}
         {attachments.status}

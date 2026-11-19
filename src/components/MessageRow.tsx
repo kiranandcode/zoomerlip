@@ -1,3 +1,4 @@
+import { InteractiveMessage } from "../messaging/InteractiveMessage";
 import { MessageActions } from "../messaging/MessageActions";
 import {
   memo,
@@ -338,6 +339,7 @@ export const MessageRow = memo(function MessageRow({
               account={account}
             />
           )}
+          <InteractiveMessage account={account} message={message} />
           <MessageActions
             account={account}
             message={message}

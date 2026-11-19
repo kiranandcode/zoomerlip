@@ -1,3 +1,4 @@
+import { MAX_SUBMESSAGES, MAX_WIDGET_BYTES } from "./messaging/widgets";
 import { invalidateMessaging } from "./messaging/lifecycle";
 import { clearContentCache } from "./contentCache";
 import { ApiError, getFeatureLevel, narrow, request } from "./api";
@@ -168,6 +169,43 @@ export function applyMessageEvent(
       if (event.op === "add") flags.add(event.flag as string);
       else flags.delete(event.flag as string);
       return { ...m, flags: [...flags] };
+    });
+  }
+  if (
+    event.type === "submessage" &&
+    typeof event.submessage_id === "number" &&
+    typeof event.sender_id === "number" &&
+    typeof event.content === "string" &&
+    event.msg_type === "widget"
+  ) {
+    return messages.map((m) => {
+      if (
+        m.id !== event.message_id ||
+        m.widgetOverflow ||
+        m.submessages?.some((s) => s.id === event.submessage_id)
+      )
+        return m;
+      const existing = m.submessages || [];
+      if (
+        existing.length >= MAX_SUBMESSAGES ||
+        existing.reduce((n, s) => n + s.content.length, 0) +
+          (event.content as string).length >
+          MAX_WIDGET_BYTES
+      )
+        return { ...m, widgetOverflow: true };
+      return {
+        ...m,
+        submessages: [
+          ...existing,
+          {
+            id: event.submessage_id as number,
+            message_id: m.id,
+            sender_id: event.sender_id as number,
+            msg_type: "widget",
+            content: event.content as string,
+          },
+        ],
+      };
     });
   }
   if (!messages.some((m) => ids.has(m.id))) return messages;

@@ -79,6 +79,7 @@ export function useSession(account: Account, _active: boolean): Session {
                   "scheduled_messages",
                   "saved_snippets",
                   "reminders",
+                  "submessage",
                   "subscription",
                   "stream",
                   "realm_user",
