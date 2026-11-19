@@ -347,10 +347,16 @@ try {
     await expect(b.locator(".org-rail .org")).toHaveCount(1);
     await expect(a.locator(".org-rail .org")).toHaveCount(1);
     await expect(
-      a.getByRole("button", { name: "Open Second", exact: true }),
+      a.getByRole("button", {
+        name: "Open Second (second.zulip.test)",
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(
-      b.getByRole("button", { name: "Open Fixture", exact: true }),
+      b.getByRole("button", {
+        name: "Open Fixture (fixture.zulip.test)",
+        exact: true,
+      }),
     ).toHaveCount(0);
     const persisted = await b.evaluate(() =>
       JSON.parse(
