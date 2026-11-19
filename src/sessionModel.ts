@@ -1,3 +1,5 @@
+import { organisationSettings } from "./organisation/permissions";
+import type { OrganisationSettings } from "./organisation/permissions";
 import type { Channel, RecentConversation, User, ZulipEvent } from "./types";
 export const topicKey = (id: number, topic: string) =>
   JSON.stringify([id, topic.toLowerCase()]);
@@ -9,6 +11,8 @@ type Unread = {
   key?: string;
 };
 export type Session = {
+  organisation: OrganisationSettings;
+  followedTopics: string[];
   channels: Channel[];
   users: User[];
   status: string;
@@ -26,6 +30,8 @@ export type Session = {
   ready: boolean;
 };
 export const initialSession: Session = {
+  organisation: {},
+  followedTopics: [],
   channels: [],
   users: [],
   status: "Connecting",
@@ -43,6 +49,7 @@ export const initialSession: Session = {
   ready: false,
 };
 export type Registration = {
+  [key: string]: unknown;
   queue_id: string;
   last_event_id: number;
   subscriptions?: Channel[];
@@ -131,6 +138,10 @@ export class SessionModel {
       for (const id of group.unread_message_ids) this.unread.set(id, {});
     this.state = {
       ...initialSession,
+      organisation: organisationSettings(data),
+      followedTopics: (data.user_topics || [])
+        .filter((t) => t.visibility_policy === 3)
+        .map((t) => topicKey(t.stream_id, t.topic_name)),
       channels: data.subscriptions || [],
       users: (data.realm_users || []).map((u) => ({
         ...u,
@@ -220,6 +231,14 @@ export class SessionModel {
         }
       } else if (e.type === "realm_user") {
         const p = e.person as Partial<User> | undefined;
+        if (p?.user_id === me)
+          this.state = {
+            ...this.state,
+            organisation: {
+              ...this.state.organisation,
+              ...organisationSettings(p as Record<string, unknown>),
+            },
+          };
         if (p && typeof p.user_id === "number") {
           const users = new Map(this.state.users.map((u) => [u.user_id, u]));
           if (e.op === "remove") users.delete(p.user_id);
@@ -233,6 +252,27 @@ export class SessionModel {
           changed = true;
         }
       } else if (e.type === "realm") {
+        const updates =
+          e.op === "update_dict" && e.data && typeof e.data === "object"
+            ? e.data
+            : typeof e.property === "string"
+              ? { [e.property]: e.value }
+              : {};
+        this.state = {
+          ...this.state,
+          organisation: {
+            ...this.state.organisation,
+            ...organisationSettings(
+              Object.fromEntries(
+                Object.entries(updates).map(([key, value]) => [
+                  `realm_${key}`,
+                  value,
+                ]),
+              ),
+            ),
+          },
+        };
+        changed = true;
         if (e.property === "name" && typeof e.value === "string") {
           this.state = { ...this.state, name: e.value };
           changed = true;
@@ -257,6 +297,10 @@ export class SessionModel {
         const key = topicKey(e.stream_id, e.topic_name);
         this.state = {
           ...this.state,
+          followedTopics: [
+            ...this.state.followedTopics.filter((t) => t !== key),
+            ...(e.visibility_policy === 3 ? [key] : []),
+          ],
           unmutedTopics: [
             ...this.state.unmutedTopics.filter((t) => t !== key),
             ...([2, 3].includes(e.visibility_policy as number) ? [key] : []),

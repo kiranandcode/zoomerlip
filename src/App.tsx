@@ -26,6 +26,9 @@ import {
   Palette,
   Lock,
 } from "lucide-react";
+import { useAccess } from "./organisation/useAccess";
+import { canTopic } from "./organisation/permissions";
+import { TopicEditor } from "./organisation/TopicEditor";
 import { SearchPanel } from "./organisation/SearchPanel";
 import "./organisation/organisation.css";
 import { clearCache, getCache } from "./cache";
@@ -314,6 +317,11 @@ const Workspace = memo(function Workspace({
   setShowNav: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
   const cache = getCache(account);
+  const access = useAccess(account, session);
+  const [topicEditor, setTopicEditor] = useState<{
+    channelId: number;
+    topic: string;
+  } | null>(null);
   const topicVersion = useSyncExternalStore(
     cache.subscribeTopics,
     cache.topicSnapshot,
@@ -861,7 +869,7 @@ const Workspace = memo(function Workspace({
           </strong>
           {panel && (
             <button
-              className="icon-button"
+              className="icon-button profile-back"
               aria-label="Back to conversation"
               onClick={() => setPanel(null)}
             >
@@ -938,6 +946,34 @@ const Workspace = memo(function Workspace({
           account={account}
           target={topicMenu}
           muted={!!threadMutes[topicKey(topicMenu.channelId, topicMenu.topic)]}
+          featureLevel={access.featureLevel}
+          serverMuted={serverMutesTopic(
+            session,
+            topicMenu.channelId,
+            topicMenu.topic,
+          )}
+          followed={
+            !!session?.followedTopics.includes(
+              topicKey(topicMenu.channelId, topicMenu.topic),
+            )
+          }
+          onManage={
+            channels.some(
+              (c) =>
+                c.stream_id === topicMenu.channelId &&
+                (["rename", "move", "resolve"] as const).some((a) =>
+                  canTopic(access, c, a),
+                ),
+            )
+              ? () => {
+                  setShowNav(false);
+                  setTopicEditor({
+                    channelId: topicMenu.channelId,
+                    topic: topicMenu.topic,
+                  });
+                }
+              : undefined
+          }
           onOpen={() =>
             select({
               type: "channel",
@@ -948,6 +984,20 @@ const Workspace = memo(function Workspace({
           onClose={closeTopicMenu}
         />
       )}
+      {topicEditor &&
+        !session?.locked &&
+        channels.some((c) => c.stream_id === topicEditor.channelId) && (
+          <TopicEditor
+            account={account}
+            channel={channels.find(
+              (c) => c.stream_id === topicEditor.channelId,
+            )!}
+            channels={channels}
+            topic={topicEditor.topic}
+            access={access}
+            onClose={() => setTopicEditor(null)}
+          />
+        )}
       {appearance && <Appearance onClose={() => setAppearance(false)} />}
       {showMembers && !session?.locked && (
         <aside className="members">

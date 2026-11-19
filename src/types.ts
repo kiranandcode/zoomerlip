@@ -1,3 +1,4 @@
+import type { GroupValue } from "./organisation/permissions";
 export type Account = {
   id: string;
   url: string;
@@ -25,6 +26,15 @@ export type Channel = {
   color?: string;
   invite_only?: boolean;
   is_muted?: boolean;
+  is_web_public?: boolean;
+  history_public_to_subscribers?: boolean;
+  can_administer_channel_group?: GroupValue;
+  can_add_subscribers_group?: GroupValue;
+  can_remove_subscribers_group?: GroupValue;
+  can_subscribe_group?: GroupValue;
+  can_move_messages_out_of_channel_group?: GroupValue;
+  can_move_messages_within_channel_group?: GroupValue;
+  can_resolve_topics_group?: GroupValue;
 };
 export type Topic = { name: string; max_id: number };
 export type Reaction = {

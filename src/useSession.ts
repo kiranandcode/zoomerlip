@@ -81,6 +81,7 @@ export function useSession(account: Account, _active: boolean): Session {
                   "update_message_flags",
                   "muted_users",
                   "user_topic",
+                  "user_group",
                 ],
                 fetch_event_types: [
                   "subscription",
