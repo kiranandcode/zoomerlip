@@ -1,4 +1,5 @@
 import { clearNotificationPreferences } from "./notifications/preferences";
+import { invalidateMessaging } from "./messaging/lifecycle";
 import { clearThreadMutes } from "./topicPreferences";
 import type { Account } from "./types";
 export const legacyAccountKey = "zoomerlip.accounts.v1";
@@ -86,6 +87,7 @@ export function removeAccount(id: string) {
   }
   clearThreadMutes(id);
   clearNotificationPreferences(id);
+  invalidateMessaging(id);
   window.dispatchEvent(new Event("zoomerlip-accounts"));
 }
 export function accountStorageEvent(e: StorageEvent) {

@@ -1,3 +1,12 @@
+import { sendComposition } from "../messaging/send";
+import { WidgetComposer } from "../messaging/WidgetComposer";
+import { ProductivityPanel } from "../messaging/ProductivityPanel";
+import type { ProductivityKind } from "../messaging/productivity";
+import { quoteMessage } from "../messaging/actions";
+import { useCompletion } from "../messaging/useCompletion";
+import { Formatting } from "../messaging/Formatting";
+import { useAttachments } from "../messaging/useAttachments";
+import { messagingCapabilities } from "../messaging/capabilities";
 import {
   forwardRef,
   memo,
@@ -9,11 +18,21 @@ import {
 } from "react";
 import { Lock, MessageCircle, Send } from "lucide-react";
 import { useTyping } from "../live/typing";
-import { request } from "../api";
+import { DraftList } from "../messaging/DraftList";
+import {
+  destinationKey,
+  draftFor,
+  persistDraft,
+  saveDraft,
+} from "../messaging/drafts";
+import type { Draft as StoredDraft } from "../messaging/drafts";
+import { getCache } from "../cache";
+import "../messaging/messaging.css";
 import { sendsOnEnter, touchPrimary } from "../composerKeys";
-import type { Account, Message, View } from "../types";
+import type { Account, Message, View, User } from "../types";
 export type ComposerHandle = {
   reply: (message: Message) => void;
+  quote: (message: Message, raw: string) => void;
   focus: () => void;
 };
 type ChatView = Extract<View, { type: "channel" | "dm" }>;
@@ -23,23 +42,113 @@ export const Composer = memo(
     ComposerHandle,
     {
       account: Account;
+      users: User[];
       view: ChatView;
       title: string;
       privateChannel: boolean;
       saved: Draft;
+      onSelect: (view: View) => void;
       onSent: (topic: string) => void;
       onError: (error: string) => void;
     }
   >(function Composer(
-    { account, view, title, privateChannel, saved, onSent, onError },
+    {
+      account,
+      users,
+      view,
+      title,
+      privateChannel,
+      saved,
+      onSelect,
+      onSent,
+      onError,
+    },
     ref,
   ) {
-    const [text, setText] = useState(saved.text),
-      [topic, setTopic] = useState(saved.topic),
+    const [initial] = useState(() => {
+      const d = draftFor(account.id, view);
+      if (d) {
+        saved.text = d.text;
+        saved.topic = d.topic;
+      }
+      return d;
+    });
+    const [text, setText] = useState(initial?.text ?? saved.text),
+      [topic, setTopic] = useState(initial?.topic ?? saved.topic),
+      [showDrafts, setShowDrafts] = useState(false),
+      [showWidget, setShowWidget] = useState(false),
+      [productivity, setProductivity] = useState<ProductivityKind | null>(null),
       [sending, setSending] = useState(false);
     const input = useRef<HTMLTextAreaElement>(null),
       alive = useRef(true),
-      busy = useRef(false);
+      busy = useRef(false),
+      operation = useRef(new AbortController()),
+      lastSaved = useRef(initial?.text ?? saved.text),
+      lastTopic = useRef(initial?.topic ?? saved.topic);
+    function persist(nextText: string, nextTopic: string) {
+      if (operation.current.signal.aborted) return;
+      saved.text = nextText;
+      saved.topic = nextTopic;
+      try {
+        persistDraft(
+          account.id,
+          {
+            id: destinationKey(view),
+            view,
+            text: nextText,
+            topic: nextTopic,
+            updated: Date.now(),
+          },
+          lastSaved.current,
+          lastTopic.current,
+        );
+        lastSaved.current = nextText;
+        lastTopic.current = nextTopic;
+      } catch (e) {
+        onError(
+          e instanceof Error
+            ? e.message
+            : "Draft could not be saved on this device.",
+        );
+      }
+    }
+    function changeText(value: string) {
+      setText(value);
+      persist(value, topic);
+    }
+    const attachments = useAttachments(
+      account,
+      (value) => changeText(`${saved.text}${saved.text ? "\n" : ""}${value}`),
+      onError,
+    );
+    const limits = messagingCapabilities(account.id);
+    const completion = useCompletion(account, users, text, input, changeText);
+    function restore(d: StoredDraft) {
+      try {
+        if (text.trim())
+          saveDraft(account.id, {
+            id: crypto.randomUUID(),
+            view,
+            text,
+            topic,
+            updated: Date.now(),
+          });
+        saveDraft(account.id, { ...d, id: destinationKey(d.view) });
+        const target = getCache(account).ui(d.view);
+        target.text = d.text;
+        target.topic = d.topic;
+        if (destinationKey(d.view) === destinationKey(view)) {
+          setText(d.text);
+          setTopic(d.topic);
+          lastSaved.current = d.text;
+          lastTopic.current = d.topic;
+        }
+        setShowDrafts(false);
+        onSelect(d.view);
+      } catch (e) {
+        onError(e instanceof Error ? e.message : "Restore failed.");
+      }
+    }
     const [touch] = useState(touchPrimary);
     const typing = useTyping(account, view, topic);
     // Grow with the draft up to the CSS max-height; then the textarea scrolls.
@@ -51,7 +160,38 @@ export const Composer = memo(
     }, [text]);
     useEffect(() => {
       alive.current = true;
+      operation.current = new AbortController();
+      const reset = (e: Event) => {
+        const d = (e as CustomEvent).detail;
+        if (
+          d.accountId === account.id &&
+          (!d.streams ||
+            (view.type === "channel" && d.streams.includes(view.channelId)))
+        ) {
+          operation.current.abort();
+          setText("");
+          setShowDrafts(false);
+          setProductivity(null);
+          saved.text = "";
+        }
+      };
+      const sent = (e: Event) => {
+        const d = (e as CustomEvent).detail;
+        if (
+          d.accountId === account.id &&
+          d.destination === destinationKey(view)
+        ) {
+          if (saved.text === d.text) saved.text = "";
+          setText((current) => (current === d.text ? "" : current));
+          if (lastSaved.current === d.text) lastSaved.current = "";
+        }
+      };
+      window.addEventListener("zoomerlip-draft-sent", sent);
+      window.addEventListener("zoomerlip-messaging-reset", reset);
       return () => {
+        operation.current.abort();
+        window.removeEventListener("zoomerlip-messaging-reset", reset);
+        window.removeEventListener("zoomerlip-draft-sent", sent);
         alive.current = false;
       };
     }, []);
@@ -59,10 +199,22 @@ export const Composer = memo(
       ref,
       () => ({
         focus: () => input.current?.focus(),
+        quote: (message, raw) => {
+          const next = `${saved.text}${saved.text ? "\n" : ""}${quoteMessage(account, message, raw)}`;
+          const targetTopic =
+            view.type === "channel" && !view.topic ? message.subject : topic;
+          setText(next);
+          setTopic(targetTopic);
+          persist(next, targetTopic);
+          input.current?.focus();
+        },
         reply: (message) => {
           setText((current) => {
             const next = `${current}${current ? "\n" : ""}@_**${message.sender_full_name}|${message.sender_id}** `;
-            saved.text = next;
+            persist(
+              next,
+              view.type === "channel" && !view.topic ? message.subject : topic,
+            );
             return next;
           });
           if (view.type === "channel" && !view.topic) {
@@ -72,14 +224,21 @@ export const Composer = memo(
           input.current?.focus();
         },
       }),
-      [saved, view],
+      [saved, view, topic],
     );
     async function send() {
-      if (!text.trim() || busy.current) return;
-      if (view.type === "channel" && (!topic.trim() || topic.length > 60)) {
+      if (!text.trim() || busy.current || attachments.busy) return;
+      if (text.length > limits.messageLength) {
+        onError(`Message exceeds the ${limits.messageLength} character limit.`);
+        return;
+      }
+      if (
+        view.type === "channel" &&
+        (!topic.trim() || topic.length > limits.topicLength)
+      ) {
         onError(
-          topic.length > 60
-            ? "Thread topics must be at most 60 characters."
+          topic.length > limits.topicLength
+            ? `Thread topics must be at most ${limits.topicLength} characters.`
             : "Give this thread a topic before sending.",
         );
         return;
@@ -91,19 +250,7 @@ export const Composer = memo(
       setSending(true);
       onError("");
       try {
-        await request(
-          account,
-          "/messages",
-          view.type === "channel"
-            ? {
-                type: "stream",
-                to: view.channelId,
-                topic: sentTopic,
-                content: sentText,
-              }
-            : { type: "private", to: view.userIds, content: sentText },
-          "POST",
-        );
+        await sendComposition(account, view, sentText, sentTopic);
         if (saved.text === sentText) saved.text = "";
         if (!alive.current) return;
         setText((current) => (current === sentText ? "" : current));
@@ -119,7 +266,18 @@ export const Composer = memo(
       }
     }
     return (
-      <div className="compose-area">
+      <div
+        className="compose-area"
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          if (e.dataTransfer.files.length) {
+            e.preventDefault();
+            attachments.add(e.dataTransfer.files);
+          }
+        }}
+      >
         <div className="compose-audience">
           {view.type === "channel" ? (
             <>
@@ -135,6 +293,76 @@ export const Composer = memo(
             <span>Direct message · {title}</span>
           )}
         </div>
+        <div className="messaging-tools">
+          {attachments.button}
+          <button type="button" onClick={() => setShowWidget(!showWidget)}>
+            Poll / to-do
+          </button>
+          <button
+            type="button"
+            onClick={() => setProductivity("scheduled_messages")}
+          >
+            Scheduled messages
+          </button>
+          <button
+            type="button"
+            onClick={() => setProductivity("saved_snippets")}
+          >
+            Snippets
+          </button>
+          <button type="button" onClick={() => setProductivity("reminders")}>
+            Reminders
+          </button>
+          <button type="button" onClick={() => setShowDrafts(!showDrafts)}>
+            Drafts
+          </button>
+        </div>
+        {showDrafts && (
+          <DraftList
+            account={account}
+            onRestore={restore}
+            onClose={() => setShowDrafts(false)}
+          />
+        )}
+        {productivity && (
+          <ProductivityPanel
+            key={productivity}
+            account={account}
+            kind={productivity}
+            view={view}
+            text={text}
+            topic={topic}
+            onInsert={(value) =>
+              changeText(`${saved.text}${saved.text ? "\n" : ""}${value}`)
+            }
+            onClose={() => setProductivity(null)}
+          />
+        )}
+        {showWidget && (
+          <WidgetComposer
+            account={account}
+            onClose={() => setShowWidget(false)}
+            onCompose={(value) => {
+              if (text.trim())
+                saveDraft(account.id, {
+                  id: crypto.randomUUID(),
+                  view,
+                  text,
+                  topic,
+                  updated: Date.now(),
+                });
+              changeText(value);
+            }}
+          />
+        )}
+        {attachments.status}
+        <Formatting
+          account={account}
+          text={text}
+          input={input}
+          onChange={changeText}
+        />
+        {completion.list}
         <form
           className="composer"
           onSubmit={(event) => {
@@ -148,26 +376,27 @@ export const Composer = memo(
               <input
                 aria-label="Thread topic"
                 aria-describedby="topic-length"
-                aria-invalid={topic.length > 60}
+                aria-invalid={topic.length > limits.topicLength}
                 placeholder="Give this thread a topic…"
                 value={topic}
                 onChange={(e) => {
                   setTopic(e.target.value);
-                  saved.topic = e.target.value;
+                  persist(text, e.target.value);
                 }}
                 readOnly={!!view.topic}
               />
               <small
                 id="topic-length"
-                className={topic.length > 60 ? "error" : ""}
+                className={topic.length > limits.topicLength ? "error" : ""}
               >
-                {topic.length}/60
+                {topic.length}/{limits.topicLength}
               </small>
             </label>
           )}
           <div className="compose-row">
             <textarea
               ref={input}
+              {...completion.props}
               id="message-composer"
               aria-label="Message"
               rows={1}
@@ -175,13 +404,24 @@ export const Composer = memo(
               placeholder={`Message ${view.type === "channel" ? "#" : "@"}${title}`}
               value={text}
               onBlur={() => typing.stop()}
+              onPaste={(e) => {
+                if (e.clipboardData.files.length) {
+                  e.preventDefault();
+                  attachments.add(e.clipboardData.files);
+                }
+              }}
               onChange={(e) => {
-                setText(e.target.value);
-                saved.text = e.target.value;
+                changeText(e.target.value);
                 if (e.target.value.trim()) typing.input();
                 else typing.stop();
               }}
               onKeyDown={(event) => {
+                if (
+                  event.nativeEvent.isComposing ||
+                  event.keyCode === 229 ||
+                  completion.keydown(event)
+                )
+                  return;
                 if (
                   sendsOnEnter(
                     { ...event, isComposing: event.nativeEvent.isComposing },
@@ -198,8 +438,10 @@ export const Composer = memo(
               aria-label="Send message"
               disabled={
                 sending ||
+                attachments.busy ||
+                text.length > limits.messageLength ||
                 !text.trim() ||
-                (view.type === "channel" && topic.length > 60)
+                (view.type === "channel" && topic.length > limits.topicLength)
               }
             >
               <Send size={19} />

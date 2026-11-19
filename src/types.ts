@@ -47,6 +47,8 @@ export type Message = {
   display_recipient:
     string | { id: number; full_name: string; email: string }[];
   reactions: Reaction[];
+  submessages?: import("./messaging/widgets").Submessage[];
+  widgetOverflow?: boolean;
   flags?: string[];
 };
 export type View =

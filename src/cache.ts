@@ -1,3 +1,6 @@
+import { moveDrafts } from "./messaging/drafts";
+import { MAX_SUBMESSAGES, MAX_WIDGET_BYTES } from "./messaging/widgets";
+import { invalidateMessaging } from "./messaging/lifecycle";
 import { clearContentCache } from "./contentCache";
 import { ApiError, getFeatureLevel, narrow, request } from "./api";
 import type {
@@ -154,6 +157,57 @@ export function applyMessageEvent(
       return [...messages, message];
     if (messages.some((m) => m.id === message.id)) return messages;
     return [...messages, message].sort((a, b) => a.id - b.id);
+  }
+  if (
+    event.type === "update_message_flags" &&
+    typeof event.flag === "string" &&
+    ["add", "remove"].includes(String(event.op))
+  ) {
+    const targets = new Set((event.messages || []) as number[]);
+    return messages.map((m) => {
+      if (!event.all && !targets.has(m.id)) return m;
+      const flags = new Set(m.flags || []);
+      if (event.op === "add") flags.add(event.flag as string);
+      else flags.delete(event.flag as string);
+      return { ...m, flags: [...flags] };
+    });
+  }
+  if (
+    event.type === "submessage" &&
+    typeof event.submessage_id === "number" &&
+    typeof event.sender_id === "number" &&
+    typeof event.content === "string" &&
+    event.msg_type === "widget"
+  ) {
+    return messages.map((m) => {
+      if (
+        m.id !== event.message_id ||
+        m.widgetOverflow ||
+        m.submessages?.some((s) => s.id === event.submessage_id)
+      )
+        return m;
+      const existing = m.submessages || [];
+      if (
+        existing.length >= MAX_SUBMESSAGES ||
+        existing.reduce((n, s) => n + s.content.length, 0) +
+          (event.content as string).length >
+          MAX_WIDGET_BYTES
+      )
+        return { ...m, widgetOverflow: true };
+      return {
+        ...m,
+        submessages: [
+          ...existing,
+          {
+            id: event.submessage_id as number,
+            message_id: m.id,
+            sender_id: event.sender_id as number,
+            msg_type: "widget",
+            content: event.content as string,
+          },
+        ],
+      };
+    });
   }
   if (!messages.some((m) => ids.has(m.id))) return messages;
   if (event.type === "delete_message")
@@ -935,6 +989,7 @@ export class OrgCache {
   purgeStreams(ids: number[]) {
     const removed = new Set(ids);
     if (!removed.size) return;
+    invalidateMessaging(this.account.id, ids);
     clearContentCache(this.account.url);
     for (const id of removed) {
       this.blockedStreams.add(id);
@@ -967,6 +1022,7 @@ export class OrgCache {
     if (changed) this.notifyNavigation();
   }
   lock() {
+    invalidateMessaging(this.account.id);
     clearContentCache(this.account.url);
     this.locked = true;
     this.cancelRequests();
@@ -1004,6 +1060,11 @@ export class OrgCache {
       topic: typeof event.subject === "string" ? event.subject : from.topic,
     };
     if (from.channelId === to.channelId && from.topic === to.topic) return;
+    try {
+      moveDrafts(this.account.id, from, to);
+    } catch {
+      /* Quota failure retains the source draft for explicit restoration. */
+    }
     // Keep the unsent draft with its destination when navigation follows a rename.
     const source = this.entries.get(viewKey(from));
     if (source) {

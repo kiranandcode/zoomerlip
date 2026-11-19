@@ -1,5 +1,11 @@
 import { clearNotificationHistory } from "./notifications/preferences";
 import { useEffect, useRef, useState } from "react";
+import { listDrafts, clearDrafts } from "./messaging/drafts";
+import {
+  setMessagingCapabilities,
+  setMessagingStreams,
+} from "./messaging/capabilities";
+import { messagingEvent } from "./messaging/lifecycle";
 import { getCache } from "./cache";
 import { clearUploadCache } from "./uploads";
 import { ApiError, pause, request } from "./api";
@@ -97,6 +103,12 @@ export function useSession(account: Account, active: boolean): Session {
                   "update_message",
                   "delete_message",
                   "reaction",
+                  "drafts",
+                  "realm_emoji",
+                  "scheduled_messages",
+                  "saved_snippets",
+                  "reminders",
+                  "submessage",
                   "subscription",
                   "stream",
                   "realm_user",
@@ -132,6 +144,10 @@ export function useSession(account: Account, active: boolean): Session {
               signal,
             );
             if (signal.aborted || finished) break;
+            setMessagingCapabilities(
+              account.id,
+              data as unknown as Record<string, unknown>,
+            );
             queue = data.queue_id;
             last = data.last_event_id;
             longpollMs =
@@ -148,7 +164,17 @@ export function useSession(account: Account, active: boolean): Session {
             const registered = new Set(
               model.state.channels.map((c) => c.stream_id),
             );
+            const draftStreams = listDrafts(account.id).flatMap((d) =>
+              d.view.type === "channel" && !registered.has(d.view.channelId)
+                ? [d.view.channelId]
+                : [],
+            );
+            if (draftStreams.length) clearDrafts(account.id, draftStreams);
             cache.purgeStreams(previous.filter((id) => !registered.has(id)));
+            setMessagingStreams(
+              account.id,
+              model.state.channels.map((c) => c.stream_id),
+            );
             cache.allowStreams(model.state.channels.map((c) => c.stream_id));
             cache.setMutedUsers(model.state.mutedUsers);
             cache.invalidate();
@@ -186,10 +212,12 @@ export function useSession(account: Account, active: boolean): Session {
           if (next.channels !== before.channels) {
             const subscribed = new Set(next.channels.map((c) => c.stream_id));
             cache.purgeStreams(previous.filter((id) => !subscribed.has(id)));
+            setMessagingStreams(account.id, [...subscribed]);
             cache.allowStreams([...subscribed]);
           }
           if (next.mutedUsers !== before.mutedUsers)
             cache.setMutedUsers(next.mutedUsers);
+          messagingEvent(account, events);
           cache.events(events.filter((e) => e.type !== "heartbeat"));
           if (events.length) last = events.at(-1)!.id;
           // Publish only real changes: every new state re-renders the whole app.
