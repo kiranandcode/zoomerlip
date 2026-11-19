@@ -8,6 +8,9 @@ import "@fontsource/dm-sans/700.css";
 import "@fontsource/space-grotesk/500.css";
 import "@fontsource/space-grotesk/700.css";
 import "./style.css";
+import "./theme.css";
+import { applyPreferences, readPreferences } from "./appearance";
+applyPreferences(readPreferences());
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />

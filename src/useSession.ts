@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getCache } from "./cache";
 import { ApiError, request } from "./api";
 import type { Account, Channel, User, ZulipEvent } from "./types";
 export type Session = {
@@ -32,14 +33,7 @@ export function useSession(account: Account, active: boolean): Session {
     let queue = "",
       last = -1,
       retry = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const refresh = () => {
-      clearTimeout(timer);
-      timer = setTimeout(
-        () => setState((s) => ({ ...s, revision: s.revision + 1 })),
-        80,
-      );
-    };
+    const cache = getCache(account);
     const pause = (ms: number) =>
       new Promise<void>((resolve) => {
         const finish = () => {
@@ -83,6 +77,7 @@ export function useSession(account: Account, active: boolean): Session {
             );
             queue = data.queue_id;
             last = data.last_event_id;
+            cache.invalidate();
             setState((s) => ({
               ...s,
               channels: data.subscriptions || [],
@@ -107,6 +102,11 @@ export function useSession(account: Account, active: boolean): Session {
             signal,
           );
           retry = 0;
+          cache.events(
+            data.events.filter(
+              (event) => event.id > last && event.type !== "heartbeat",
+            ),
+          );
           for (const event of data.events) {
             if (event.id <= last) continue;
             if (event.type === "heartbeat") {
@@ -146,7 +146,6 @@ export function useSession(account: Account, active: boolean): Session {
               event.message?.sender_id !== account.userId
             )
               setState((s) => ({ ...s, unread: s.unread + 1 }));
-            refresh();
             last = event.id;
           }
         } catch (error) {
@@ -176,7 +175,6 @@ export function useSession(account: Account, active: boolean): Session {
     void run();
     return () => {
       controller.abort();
-      clearTimeout(timer);
       if (queue)
         void request(account, "/events", { queue_id: queue }, "DELETE").catch(
           () => {},

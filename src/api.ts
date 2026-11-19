@@ -73,9 +73,18 @@ export async function request<T>(
     );
   return data as T;
 }
-export function narrow(
-  view: View,
-): { operator: string; operand: string | number | number[] }[] {
+export function narrow(view: View): {
+  operator: string;
+  operand: string | number | number[];
+  negated?: boolean;
+}[] {
+  if (view.type === "profile")
+    return [
+      { operator: "sender", operand: view.userId },
+      ...(view.posts === "channels"
+        ? [{ operator: "is", operand: "private", negated: true }]
+        : []),
+    ];
   if (view.type === "home") return [{ operator: "is", operand: "private" }];
   if (view.type === "dm")
     return [{ operator: "pm-with", operand: view.userIds }];

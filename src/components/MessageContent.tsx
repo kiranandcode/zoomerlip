@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { request } from "../api";
 import { sanitizeContent } from "../content";
 import type { Account } from "../types";
-export function MessageContent({
+export const MessageContent = memo(function MessageContent({
   html,
   account,
 }: {
@@ -87,4 +87,4 @@ export function MessageContent({
       {error && <small className="error">{error}</small>}
     </>
   );
-}
+});

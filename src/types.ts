@@ -13,6 +13,9 @@ export type User = {
   avatar_url?: string;
   is_active: boolean;
   is_bot: boolean;
+  date_joined?: string;
+  timezone?: string;
+  profile_data?: Record<string, { value: string; rendered_value?: string }>;
 };
 export type Channel = {
   stream_id: number;
@@ -47,7 +50,8 @@ export type Message = {
 export type View =
   | { type: "channel"; channelId: number; topic?: string }
   | { type: "dm"; userIds: number[] }
-  | { type: "home" };
+  | { type: "home" }
+  | { type: "profile"; userId: number; posts: "channels" | "all" };
 export type ZulipEvent = {
   id: number;
   type: string;
