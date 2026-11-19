@@ -91,7 +91,17 @@ export function sanitizeContent(html: string, org: string): DocumentFragment {
         element.referrerPolicy = "no-referrer";
       }
       if (url.origin === org && url.pathname.startsWith("/user_uploads/")) {
-        element.dataset.upload = url.pathname;
+        // Thumbnail routes aren't accepted by the temporary-URL API. Resolve
+        // the original attachment instead, then let the browser resize it.
+        element.dataset.upload = url.pathname.startsWith(
+          "/user_uploads/thumbnail/",
+        )
+          ? element.closest("a")?.dataset.upload ||
+            url.pathname.replace(
+              /^\/user_uploads\/thumbnail\/(.+)\/[^/]+$/,
+              "/user_uploads/$1",
+            )
+          : url.pathname;
         element.removeAttribute(attr);
         if (element instanceof HTMLAnchorElement) element.href = "#attachment";
       }

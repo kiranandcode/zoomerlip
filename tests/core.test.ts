@@ -81,6 +81,17 @@ describe("credential boundaries", () => {
   });
 });
 describe("message safety", () => {
+  it("resolves thumbnail images through the original attachment", () => {
+    const f = sanitizeContent(
+      '<a href="/user_uploads/2/abc/picture.png"><img src="/user_uploads/thumbnail/2/abc/picture.png/840x560.webp"></a>',
+      "https://example.com",
+    );
+    expect(f.querySelector("img")?.dataset.upload).toBe(
+      "/user_uploads/2/abc/picture.png",
+    );
+    expect(f.querySelector("img")?.hasAttribute("src")).toBe(false);
+    expect(f.querySelector("a")?.getAttribute("href")).toBe("#attachment");
+  });
   it("rejects forged attachment metadata", () => {
     const f = sanitizeContent(
       '<a href="https://evil.test" data-upload="/users/me">x</a><img data-upload="/users/me" src="https://evil.test/x">',

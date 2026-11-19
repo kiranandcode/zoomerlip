@@ -694,7 +694,13 @@ function Conversation({
       );
       setText("");
       atBottom.current = true;
-      setRefresh((r) => r + 1);
+      if (
+        view.type === "channel" &&
+        view.topic !== undefined &&
+        view.topic !== topic.trim()
+      ) {
+        onSelect({ ...view, topic: topic.trim() });
+      } else setRefresh((r) => r + 1);
     } catch (e) {
       setError(
         `${errorText(e)} Your draft is still here. Check for delivery before retrying.`,

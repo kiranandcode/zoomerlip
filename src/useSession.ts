@@ -109,7 +109,10 @@ export function useSession(account: Account, active: boolean): Session {
           retry = 0;
           for (const event of data.events) {
             if (event.id <= last) continue;
-            if (event.type === "heartbeat") { last = event.id; continue; }
+            if (event.type === "heartbeat") {
+              last = event.id;
+              continue;
+            }
             if (
               event.type === "subscription" ||
               event.type === "realm_user" ||

@@ -13,7 +13,6 @@ export function MessageContent({
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
-    const objectUrls: string[] = [];
     const container = ref.current!;
     container.replaceChildren(sanitizeContent(html, account.url));
     setError("");
@@ -30,24 +29,21 @@ export function MessageContent({
         throw new Error("Invalid attachment URL");
       return url.href;
     };
-    // Fetch temporary URLs immediately; retain the image blob, never the signed URL.
+    // Start the browser image request immediately. Upload responses need not
+    // support CORS, so fetching a blob here would break valid Zulip servers.
     container
       .querySelectorAll<HTMLImageElement>("img[data-upload]")
       .forEach((img) => {
         void (async () => {
           try {
             const url = await resolveUpload(img.dataset.upload!);
-            const response = await fetch(url, {
-              signal: controller.signal,
-              credentials: "omit",
-              referrerPolicy: "no-referrer",
-            });
-            if (!response.ok) throw new Error("Attachment unavailable");
-            const blob = await response.blob();
             if (controller.signal.aborted) return;
-            const objectUrl = URL.createObjectURL(blob);
-            objectUrls.push(objectUrl);
-            img.src = objectUrl;
+            img.loading = "eager";
+            img.onerror = () => {
+              if (!controller.signal.aborted)
+                setError("An attachment could not be loaded.");
+            };
+            img.src = url;
           } catch {
             if (!controller.signal.aborted)
               setError("An attachment could not be loaded.");
@@ -77,7 +73,12 @@ export function MessageContent({
     return () => {
       controller.abort();
       container.removeEventListener("click", click);
-      objectUrls.forEach(URL.revokeObjectURL);
+      container
+        .querySelectorAll<HTMLImageElement>("img[data-upload]")
+        .forEach((img) => {
+          img.onerror = null;
+          img.removeAttribute("src");
+        });
     };
   }, [html, account]);
   return (
