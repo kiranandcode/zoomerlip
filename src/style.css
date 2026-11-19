@@ -154,7 +154,7 @@ p {
   right: -3px;
   background: #e99579;
   color: #1c2027;
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   padding: 2px 5px;
   border: 3px solid #14171e;
   border-radius: 10px;
@@ -190,7 +190,7 @@ p {
   gap: 6px;
   margin-top: 5px;
   font-family: "DM Sans", sans-serif;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   font-weight: 450;
   color: var(--muted);
 }
@@ -217,7 +217,7 @@ p {
 }
 .nav-search input {
   width: 100%;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
 }
 .nav-scroll {
   overflow: auto;
@@ -251,7 +251,7 @@ p {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   letter-spacing: 1.2px;
   color: #777f90;
   font-weight: 700;
@@ -259,7 +259,7 @@ p {
   margin: 25px 0 10px;
 }
 .section-label span {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   background: #ffffff08;
   padding: 2px 5px;
   border-radius: 4px;
@@ -325,7 +325,7 @@ p {
   color: #596574;
 }
 .new-topic {
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: #798874;
 }
 .topics small {
@@ -367,7 +367,7 @@ p {
 .profile small {
   display: block;
   color: #7d8799;
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   font-weight: 400;
   margin-top: 3px;
 }
@@ -444,7 +444,7 @@ p {
 }
 .eyebrow {
   display: block;
-  font-size: 9px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   font-weight: 700;
   letter-spacing: 1.6px;
   color: #91a478;
@@ -468,7 +468,7 @@ p {
   align-items: center;
   gap: 12px;
   color: #798395;
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   font-weight: 600;
   margin: 24px 30px;
 }
@@ -513,7 +513,7 @@ p {
   width: 28px;
   height: 28px;
   border-radius: 10px;
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
 }
 .message-body {
   min-width: 0;
@@ -535,7 +535,7 @@ p {
   text-decoration: underline;
 }
 .message-meta time {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: #737f92;
 }
 .message-content {
@@ -607,7 +607,7 @@ p {
 .group-time {
   width: 37px;
   flex-shrink: 0;
-  font-size: 8px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: transparent;
   line-height: 22px;
   white-space: nowrap;
@@ -647,7 +647,7 @@ p {
   font-size: 13px;
 }
 .reactions button span {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: #a9b5c7;
 }
 .reactions button.mine {
@@ -680,7 +680,7 @@ p {
   gap: 8px;
   margin: 18px 30px 10px;
   color: #b5c8a0;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
 }
 .compose-area {
   padding: 5px 26px 18px;
@@ -701,7 +701,7 @@ p {
   color: #82916f;
 }
 .topic-input input {
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   width: 100%;
   color: #b4c3a2;
 }
@@ -738,7 +738,7 @@ p {
   display: flex;
   justify-content: space-between;
   color: #6c788c;
-  font-size: 9px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   margin-top: 10px;
   padding: 0 3px;
 }
@@ -755,7 +755,7 @@ p {
   overflow: auto;
 }
 .members header {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   letter-spacing: 1.4px;
   color: #9ca6b6;
   font-weight: 700;
@@ -767,7 +767,7 @@ p {
   color: #667286;
 }
 .members > p {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: #69768a;
   margin-bottom: 24px;
 }
@@ -793,7 +793,7 @@ p {
 }
 .member small {
   display: block;
-  font-size: 9px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: #6e7b8f;
   margin-top: 3px;
 }
@@ -817,7 +817,7 @@ p {
   color: #879482;
 }
 .members-note p {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   margin-top: 9px;
 }
 .empty-state {
@@ -828,7 +828,7 @@ p {
 .load-older {
   display: block;
   margin: 8px auto;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: #bed89e;
   padding: 8px 16px;
   background: #b9f36b08;
@@ -855,13 +855,13 @@ p {
 .dm-card small {
   display: block;
   color: #8590a3;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   margin-top: 4px;
 }
 .dm-card time {
   margin-left: auto;
   color: #707f93;
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
 }
 .error,
 .connection-error,
@@ -881,7 +881,7 @@ p {
   padding: 8px 25px;
 }
 .conversation-error > button:last-child {
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   text-decoration: underline;
 }
 .new-below {
@@ -896,7 +896,7 @@ p {
   background: var(--lime);
   color: #26311c;
   border-radius: 20px;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   box-shadow: 0 4px 10px #0003;
 }
 .edit-form {
@@ -940,7 +940,7 @@ p {
 }
 .wordmark > span {
   font-family: "DM Sans", sans-serif;
-  font-size: 8px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   letter-spacing: 1.4px;
   color: #768575;
   border: 1px solid #76857544;
@@ -953,7 +953,7 @@ p {
   padding: 70px 0;
 }
 .story-copy .eyebrow {
-  font-size: 9px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   letter-spacing: 2px;
 }
 .story-copy h1 {
@@ -983,12 +983,12 @@ p {
   background: #ffffff03;
   border-radius: 7px;
   padding: 9px 12px;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: #9cae94;
 }
 .login-story footer {
   color: #5f6d7c;
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
 }
 .login-side {
   flex: 1;
@@ -1028,7 +1028,7 @@ p {
 }
 .login-card label {
   display: block;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   font-weight: 600;
   color: #b3bdca;
   margin: 18px 0;
@@ -1068,7 +1068,7 @@ p {
 .login-card > small {
   display: block;
   color: #8895a7;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   line-height: 1.7;
 }
 .primary {
@@ -1092,14 +1092,14 @@ p {
   margin-top: 25px;
 }
 .login-card .privacy {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   line-height: 1.8;
   text-align: center;
   color: #657487;
   margin: 19px 0 0;
 }
 .independent {
-  font-size: 9px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: #536276;
   margin-top: 50px;
 }
@@ -1240,7 +1240,7 @@ p {
     padding: 5px 12px 15px;
   }
   .compose-hint {
-    font-size: 8px;
+    font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   }
   .compose-row {
     padding: 9px;
@@ -1276,6 +1276,6 @@ p {
     font-size: 12px;
   }
   .message-meta time {
-    font-size: 9px;
+    font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   }
 }

@@ -7,7 +7,7 @@
   --field: #202228;
   --text: #e8eaf0;
   --secondary: #b1b6c3;
-  --muted: #9299a8;
+  --muted: #a6adbb;
   --border: #ffffff0b;
   --hover: #ffffff07;
   --accent: #9ed7ba;
@@ -41,10 +41,10 @@
   --field: #e4e8ed;
   --text: #242b37;
   --secondary: #515d70;
-  --muted: #636f80;
+  --muted: #5d6878;
   --border: #18253916;
   --hover: #18253907;
-  --accent: #367c5c;
+  --accent: #2f6f51;
   --accent-ink: #fff;
   --accent-soft: #367c5c12;
 }
@@ -64,7 +64,7 @@
   --accent-soft: #f0b09b15;
 }
 :root[data-theme="light"][data-accent="lime"] {
-  --accent: #567b18;
+  --accent: #4e6f16;
   --accent-ink: #fff;
   --accent-soft: #567b1812;
 }
@@ -74,7 +74,7 @@
   --accent-soft: #7153ad12;
 }
 :root[data-theme="light"][data-accent="coral"] {
-  --accent: #a94f38;
+  --accent: #a34a34;
   --accent-ink: #fff;
   --accent-soft: #a94f3812;
 }
@@ -148,7 +148,7 @@ button:hover {
   font-weight: 700;
 }
 .org-name small {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   gap: 5px;
   margin-top: 2px;
   color: var(--muted);
@@ -211,7 +211,7 @@ button:hover {
   background: var(--hover);
 }
 .section-label {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   letter-spacing: 0.8px;
   color: var(--muted);
   margin-top: 20px;
@@ -289,7 +289,7 @@ button:hover {
 }
 .self-profile small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   font-weight: 400;
 }
 .profile .icon-button {
@@ -310,7 +310,7 @@ button:hover {
 .members header {
   padding: 0 7px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
 }
 .members header span {
   color: var(--muted);
@@ -368,7 +368,7 @@ button:hover {
 }
 .date-divider {
   color: var(--muted);
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   margin: 20px 24px;
 }
 .date-divider:before,
@@ -398,7 +398,7 @@ button:hover {
 }
 .message-meta time {
   color: var(--muted);
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
 }
 .message-content {
   color: var(--secondary);
@@ -431,7 +431,7 @@ button:hover {
 }
 .group-time {
   width: 38px;
-  font-size: 8px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   line-height: 22px;
 }
 .grouped:hover .group-time {
@@ -506,7 +506,7 @@ button:hover {
 }
 .compose-hint {
   color: var(--muted);
-  font-size: 9px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   margin-top: 7px;
 }
 .compose-hint strong {
@@ -623,7 +623,7 @@ button:hover {
   padding: 8px 12px;
 }
 .profile-tag {
-  font-size: 9px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   letter-spacing: 1px;
   color: var(--muted);
 }
@@ -642,7 +642,7 @@ button:hover {
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: var(--secondary);
 }
 .activity-heading {
@@ -664,7 +664,7 @@ button:hover {
   margin: 0;
 }
 .history-scope {
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: var(--muted);
   margin-bottom: 18px;
 }
@@ -694,7 +694,7 @@ button:hover {
   gap: 6px;
   padding: 0;
   min-width: 0;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: var(--accent);
   text-align: left;
 }
@@ -710,11 +710,11 @@ button:hover {
 }
 .activity-card time {
   white-space: nowrap;
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: var(--muted);
 }
 .open-conversation {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: var(--muted);
   margin-top: 12px;
   padding: 0;
@@ -747,7 +747,7 @@ button:hover {
   justify-content: space-between;
 }
 .appearance-panel .eyebrow {
-  font-size: 9px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: var(--accent);
   letter-spacing: 1.3px;
 }
@@ -793,7 +793,7 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   padding: 8px 2px 2px;
 }
 .theme-option svg {
@@ -883,7 +883,7 @@ button:hover {
   color: var(--muted);
   padding: 6px 11px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
 }
 .segmented button[aria-pressed="true"] {
   background: var(--raised);
@@ -902,7 +902,7 @@ button:hover {
 .range-label > span {
   margin-left: auto;
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
 }
 .range-label input {
   width: 100%;
@@ -920,7 +920,7 @@ button:hover {
 .motion-setting small {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   margin-top: 5px;
   line-height: 1.5;
 }
@@ -954,7 +954,7 @@ button:hover {
   font-weight: 600;
 }
 .appearance-sample small {
-  font-size: 9px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   font-weight: 400;
   color: var(--muted);
   margin-left: 7px;
@@ -969,7 +969,7 @@ button:hover {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: var(--muted);
   margin: 18px auto 0;
 }
@@ -1193,7 +1193,7 @@ button:hover {
 }
 .custom-heading > span,
 .custom-themes > p {
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: var(--muted);
 }
 .custom-themes > p {
@@ -1205,7 +1205,7 @@ button:hover {
   margin-top: 12px;
 }
 .custom-tools button {
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -1221,7 +1221,7 @@ button:hover {
   padding: 6px 0;
 }
 .custom-theme-row > button {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   padding: 4px;
 }
 .custom-theme-row .custom-select {
@@ -1273,7 +1273,7 @@ button:hover {
 }
 .colour-grid label > span {
   display: block;
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: var(--secondary);
   margin-bottom: 5px;
 }
@@ -1292,10 +1292,10 @@ button:hover {
 .colour-grid input:not([type="color"]) {
   width: 100%;
   font-family: monospace;
-  font-size: 11px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
 }
 .theme-contrast {
-  font-size: 10px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
   color: var(--secondary);
   line-height: 1.5;
 }
@@ -1332,4 +1332,218 @@ button:hover {
 .login-appearance:hover {
   color: #fff;
   background: #373b44;
+}
+/* Accessible navigation and controls retain the compact layout. */
+.add-org-dialog {
+  border: 0;
+  padding: 0;
+  margin: auto;
+  width: min(540px, calc(100vw - 24px));
+  max-width: 100%;
+  max-height: calc(100dvh - 24px);
+  background: var(--sidebar);
+  color: var(--text);
+  border-radius: 14px;
+  box-shadow: 0 20px 80px #0008;
+}
+.add-org-dialog::backdrop {
+  background: #090c16ba;
+}
+.add-org-dialog .login-screen {
+  min-height: 0;
+  height: auto;
+  display: block;
+}
+.add-org-dialog .login-story {
+  display: none;
+}
+.add-org-dialog .login-side {
+  padding: 64px 28px 28px;
+  min-height: 0;
+}
+.add-org-dialog .login-card {
+  width: 100%;
+  padding: 0;
+}
+.add-org-dialog .login-card .close {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  right: auto;
+}
+.add-org-dialog .login-appearance {
+  right: 18px;
+  top: 18px;
+}
+.add-org-dialog .independent {
+  display: none;
+}
+.mobile-close,
+.nav-backdrop {
+  display: none;
+}
+.skip-composer {
+  position: absolute;
+  left: 8px;
+  top: 60px;
+  z-index: 30;
+  transform: translateY(-200vh);
+  padding: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 5px;
+}
+.skip-composer:focus {
+  transform: none;
+}
+.main-pane {
+  position: relative;
+}
+.compose-audience {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
+  color: var(--secondary);
+  margin: 2px 0 7px;
+}
+.compose-audience span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.private-label {
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
+  color: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+}
+.topic-input input {
+  min-width: 0;
+  flex: 1;
+}
+.topic-input small {
+  white-space: nowrap;
+}
+.message-actions button,
+.emoji-picker button,
+.member,
+.theme-option,
+.custom-tools button,
+.custom-theme-row > button {
+  min-height: 28px;
+  min-width: 28px;
+}
+.nav-search input,
+.topic,
+.segmented button,
+.theme-option > span:last-child,
+.custom-theme-row > button,
+.custom-tools button,
+.open-conversation,
+.reset-appearance,
+.self-profile,
+.appearance-panel legend,
+.motion-setting,
+.range-label,
+.theme-editor label,
+.colour-grid input:not([type="color"]),
+.custom-select,
+.profile-back,
+.load-older {
+  font-size: max(12px, calc(var(--message-size, 15px) * 0.8));
+}
+.message-content {
+  overflow-wrap: anywhere;
+}
+.message:focus-visible {
+  outline-offset: -2px;
+}
+.touch-actions {
+  display: none;
+}
+.message.show-actions .message-actions {
+  display: flex;
+}
+.emoji-picker {
+  z-index: 5;
+}
+.member-window:focus-within {
+  outline: none;
+}
+.group-time {
+  min-width: 38px;
+}
+.grouped .group-time {
+  visibility: hidden;
+}
+.grouped:hover .group-time,
+.grouped:focus-within .group-time {
+  visibility: visible;
+}
+.compose-hint {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.login-card .privacy {
+  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
+}
+@media (hover: none), (pointer: coarse) {
+  .touch-actions {
+    display: flex;
+    align-self: flex-start;
+    margin-left: auto;
+  }
+  .message-actions {
+    right: 44px;
+  }
+  .message {
+    padding-right: 10px;
+  }
+  .message-actions button {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  .emoji-picker button {
+    min-width: 36px;
+    min-height: 36px;
+  }
+}
+@media (max-width: 640px) {
+  .mobile-close {
+    display: inline-flex;
+  }
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0 0 0 60px;
+    background: #080a1090;
+    z-index: 9;
+  }
+  .sidebar.mobile-open {
+    z-index: 10;
+  }
+  .compose-hint span:last-child {
+    display: none;
+  }
+  .private-label {
+    display: none;
+  }
+  .topic-input {
+    gap: 7px;
+    padding: 8px;
+  }
+  .appearance-panel {
+    padding: 18px;
+  }
+  .add-org-dialog .login-side {
+    padding: 64px 20px 24px;
+  }
+  .compose-area {
+    padding-bottom: 10px;
+  }
+  .group-time {
+    min-width: 32px;
+  }
 }

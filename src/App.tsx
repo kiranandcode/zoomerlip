@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -19,16 +20,12 @@ import {
   MessageCircle,
   Plus,
   Search,
-  Send,
-  SmilePlus,
   Users,
   X,
-  Reply,
-  Pencil,
-  Check,
   ArrowDown,
   UserRound,
   Palette,
+  Lock,
 } from "lucide-react";
 import { clearCache, getCache } from "./cache";
 import { useMessages } from "./useMessages";
@@ -36,12 +33,14 @@ import { Avatar, initials } from "./components/Avatar";
 import { ProfilePage } from "./components/ProfilePage";
 import { Appearance } from "./components/Appearance";
 import { MemberList } from "./components/MemberList";
-import { readAccounts, request, saveAccounts } from "./api";
+import { readAccounts, saveAccounts } from "./api";
 import { useSession } from "./useSession";
 import type { Session } from "./useSession";
-import type { Account, Message, Reaction, Topic, User, View } from "./types";
+import type { Account, Message, Topic, User, View } from "./types";
 import { Login } from "./components/Login";
-import { MessageContent } from "./components/MessageContent";
+import { MessageRow } from "./components/MessageRow";
+import { Composer } from "./components/Composer";
+import type { ComposerHandle } from "./components/Composer";
 const errorText = (e: unknown) =>
   e instanceof Error ? e.message : "Something went wrong.";
 function SessionBridge({
@@ -89,6 +88,15 @@ export default function App() {
     setActiveId(account.id);
     setAdding(false);
   }
+  const logout = useCallback(() => {
+    if (
+      active &&
+      window.confirm(
+        `Remove ${active.name} and its saved API key from this browser?`,
+      )
+    )
+      update(accounts.filter((a) => a.id !== active.id));
+  }, [active, accounts]);
   if (!active) return <Login onLogin={onLogin} />;
   return (
     <>
@@ -116,7 +124,7 @@ export default function App() {
             <button
               key={a.id}
               title={sessions[a.id]?.name || a.name}
-              aria-label={`Open ${sessions[a.id]?.name || a.name}`}
+              aria-label={`Open ${sessions[a.id]?.name || a.name}${sessions[a.id]?.unread ? `, ${sessions[a.id].unread} unread` : ""}`}
               aria-pressed={a.id === active.id}
               className={`rail-button org ${a.id === active.id ? "selected" : ""}`}
               style={
@@ -146,14 +154,7 @@ export default function App() {
           key={active.id}
           account={active}
           session={sessions[active.id]}
-          onLogout={() => {
-            if (
-              window.confirm(
-                `Remove ${active.name} and its saved API key from this browser?`,
-              )
-            )
-              update(accounts.filter((a) => a.id !== active.id));
-          }}
+          onLogout={logout}
         />
       </div>
       {storageError && (
@@ -162,19 +163,44 @@ export default function App() {
         </div>
       )}
       {adding && (
-        <div
-          className="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Add organization"
-        >
-          <Login onLogin={onLogin} onClose={() => setAdding(false)} />
-        </div>
+        <AddOrganization onClose={() => setAdding(false)} onLogin={onLogin} />
       )}
     </>
   );
 }
-function Workspace({
+function AddOrganization({
+  onClose,
+  onLogin,
+}: {
+  onClose: () => void;
+  onLogin: (account: Account) => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current!;
+    const previous = document.activeElement as HTMLElement | null;
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      previous?.focus();
+    };
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      className="add-org-dialog"
+      aria-label="Add organization"
+      onCancel={onClose}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <Login onLogin={onLogin} onClose={onClose} />
+    </dialog>
+  );
+}
+const emptyUsers: User[] = [];
+const Workspace = memo(function Workspace({
   account,
   session,
   onLogout,
@@ -199,13 +225,38 @@ function Workspace({
     [topicError, setTopicError] = useState("");
   const search = useDeferredValue(filter.toLowerCase());
   const channels = session?.channels || [],
-    users = session?.users || [];
+    users = session?.users || emptyUsers;
+  const userMap = useMemo(
+    () => new Map(users.map((user) => [user.user_id, user])),
+    [users],
+  );
+  const navToggle = useRef<HTMLButtonElement>(null);
+  const navClose = useRef<HTMLButtonElement>(null);
+  const closeNav = useCallback(() => {
+    setShowNav(false);
+    navToggle.current?.focus();
+  }, []);
+  useEffect(() => {
+    if (!showNav) return;
+    navClose.current?.focus();
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeNav();
+      }
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, [showNav, closeNav]);
   const selectedChannel =
     view.type === "channel"
       ? channels.find((c) => c.stream_id === view.channelId)
       : undefined;
   useEffect(() => {
-    const home = () => setView({ type: "home" });
+    const home = () => {
+      setView({ type: "home" });
+      setShowNav(false);
+    };
     window.addEventListener("zoomerlip-home", home);
     return () => window.removeEventListener("zoomerlip-home", home);
   }, []);
@@ -234,7 +285,7 @@ function Workspace({
     setView(next);
     setShowNav(false);
   }, []);
-  const me = users.find((u) => u.user_id === account.userId);
+  const me = userMap.get(account.userId);
   const members = useMemo(
     () =>
       users
@@ -256,25 +307,30 @@ function Workspace({
       ? "Direct messages"
       : view.type === "dm"
         ? view.userIds
-            .map(
-              (id) =>
-                users.find((u) => u.user_id === id)?.full_name ||
-                "Unknown user",
-            )
+            .map((id) => userMap.get(id)?.full_name || "Unknown user")
             .join(", ")
         : view.type === "profile"
           ? view.userId === account.userId
             ? "My posts"
-            : users.find((u) => u.user_id === view.userId)?.full_name ||
-              "Profile"
+            : userMap.get(view.userId)?.full_name || "Profile"
           : selectedChannel?.name || "Channel";
   return (
     <>
-      <aside className={`sidebar ${showNav ? "mobile-open" : ""}`}>
+      {showNav && (
+        <button
+          className="nav-backdrop"
+          aria-label="Close channel drawer"
+          onClick={closeNav}
+        />
+      )}
+      <aside
+        id="channel-sidebar"
+        className={`sidebar ${showNav ? "mobile-open" : ""}`}
+      >
         <header className="org-header">
           <span className="org-name">
             {session?.name || account.name}
-            <small>
+            <small role="status" aria-live="polite">
               <i
                 className={
                   session?.status === "Live"
@@ -285,7 +341,14 @@ function Workspace({
               {session?.status || "Connecting"}
             </small>
           </span>
-          <ChevronDown size={18} />
+          <button
+            ref={navClose}
+            className="icon-button mobile-close"
+            aria-label="Close channels"
+            onClick={closeNav}
+          >
+            <X size={20} />
+          </button>
         </header>
         <div className="nav-search">
           <Search size={15} />
@@ -347,6 +410,11 @@ function Workspace({
                   </button>
                   <button
                     className="channel-name"
+                    aria-label={
+                      channel.invite_only
+                        ? `${channel.name} (private channel)`
+                        : channel.name
+                    }
                     onClick={() => {
                       select({ type: "channel", channelId: channel.stream_id });
                       setExpanded((ids) =>
@@ -356,7 +424,11 @@ function Workspace({
                       );
                     }}
                   >
-                    <Hash size={18} />
+                    {channel.invite_only ? (
+                      <Lock size={18} />
+                    ) : (
+                      <Hash size={18} />
+                    )}
                     <span>{channel.name}</span>
                   </button>
                 </div>
@@ -489,16 +561,26 @@ function Workspace({
           <button
             className="icon-button mobile-menu"
             aria-label="Toggle channels"
+            ref={navToggle}
+            aria-expanded={showNav}
+            aria-controls="channel-sidebar"
             onClick={() => setShowNav(!showNav)}
           >
             <Menu size={20} />
           </button>
           {view.type === "channel" ? (
-            <Hash className="header-hash" size={24} />
+            selectedChannel?.invite_only ? (
+              <Lock className="header-hash" size={24} />
+            ) : (
+              <Hash className="header-hash" size={24} />
+            )
           ) : (
             <AtSign className="header-hash" size={24} />
           )}
           <strong>{title}</strong>
+          {view.type === "channel" && selectedChannel?.invite_only && (
+            <span className="private-label">Private</span>
+          )}
           {view.type === "channel" && view.topic !== undefined ? (
             <>
               <span className="header-divider" />
@@ -537,6 +619,7 @@ function Workspace({
           view={view}
           title={title}
           users={users}
+          privateChannel={!!selectedChannel?.invite_only}
           onSelect={select}
         />
       </main>
@@ -561,18 +644,20 @@ function Workspace({
       )}
     </>
   );
-}
-function Conversation({
+});
+const Conversation = memo(function Conversation({
   account,
   view,
   title,
   users,
+  privateChannel,
   onSelect,
 }: {
   account: Account;
   view: View;
   title: string;
   users: User[];
+  privateChannel: boolean;
   onSelect: (view: View) => void;
 }) {
   const {
@@ -585,20 +670,36 @@ function Conversation({
   const [error, setError] = useState(""),
     [olderBusy, setOlderBusy] = useState(false);
   const saved = cache.ui(view);
-  const [text, setText] = useState(saved.text),
-    [topic, setTopic] = useState(saved.topic),
-    [sending, setSending] = useState(false),
-    [picker, setPicker] = useState<number | null>(null),
-    [editing, setEditing] = useState<number | null>(null),
-    [editText, setEditText] = useState("");
+  const userMap = useMemo(
+    () => new Map(users.map((user) => [user.user_id, user])),
+    [users],
+  );
+  const [focusedMessage, setFocusedMessage] = useState<number | null>(null);
+  const activeMessage = messages.some(
+    (message) => message.id === focusedMessage,
+  )
+    ? focusedMessage
+    : messages.at(-1)?.id;
   const scroller = useRef<HTMLDivElement>(null),
-    composer = useRef<HTMLTextAreaElement>(null),
+    composer = useRef<ComposerHandle>(null),
     atBottom = useRef(saved.atBottom),
     [newBelow, setNewBelow] = useState(false);
-  useEffect(() => {
-    saved.text = text;
-    saved.topic = topic;
-  }, [saved, text, topic]);
+  const reply = useCallback(
+    (message: Message) => composer.current?.reply(message),
+    [],
+  );
+  const sent = useCallback(
+    (topic: string) => {
+      atBottom.current = true;
+      if (
+        view.type === "channel" &&
+        view.topic !== undefined &&
+        view.topic !== topic
+      )
+        onSelect({ ...view, topic });
+    },
+    [view, onSelect],
+  );
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollTop = saved.scrollTop;
   }, [saved]);
@@ -633,75 +734,6 @@ function Conversation({
       setOlderBusy(false);
     }
   }
-  async function send() {
-    if (
-      !text.trim() ||
-      sending ||
-      view.type === "home" ||
-      view.type === "profile"
-    )
-      return;
-    if (view.type === "channel" && !topic.trim()) {
-      setError("Give this thread a topic before sending.");
-      return;
-    }
-    const sentText = text;
-    setSending(true);
-    setError("");
-    try {
-      await request(
-        account,
-        "/messages",
-        view.type === "channel"
-          ? {
-              type: "stream",
-              to: view.channelId,
-              topic: topic.trim(),
-              content: text,
-            }
-          : { type: "private", to: view.userIds, content: text },
-        "POST",
-      );
-      if (saved.text === sentText) saved.text = "";
-      setText((current) => (current === sentText ? "" : current));
-      atBottom.current = true;
-      if (
-        view.type === "channel" &&
-        view.topic !== undefined &&
-        view.topic !== topic.trim()
-      ) {
-        onSelect({ ...view, topic: topic.trim() });
-      }
-    } catch (e) {
-      setError(
-        `${errorText(e)} Your draft is still here. Check for delivery before retrying.`,
-      );
-    } finally {
-      setSending(false);
-    }
-  }
-  async function react(
-    message: Message,
-    reaction: Pick<Reaction, "emoji_name" | "emoji_code" | "reaction_type">,
-  ) {
-    setPicker(null);
-    const mine = message.reactions.some(
-      (r) =>
-        r.user_id === account.userId &&
-        r.emoji_code === reaction.emoji_code &&
-        r.reaction_type === reaction.reaction_type,
-    );
-    try {
-      await request(
-        account,
-        `/messages/${message.id}/reactions`,
-        reaction,
-        mine ? "DELETE" : "POST",
-      );
-    } catch (e) {
-      setError(errorText(e));
-    }
-  }
   const dms = new Map<string, { ids: number[]; message: Message }>();
   if (view.type === "home")
     for (const message of [...messages].reverse()) {
@@ -716,8 +748,50 @@ function Conversation({
     }
   return (
     <>
+      {view.type !== "home" && view.type !== "profile" && (
+        <a
+          className="skip-composer"
+          href="#message-composer"
+          onClick={(event) => {
+            event.preventDefault();
+            composer.current?.focus();
+          }}
+        >
+          Skip to message composer
+        </a>
+      )}
       <div
         className="message-scroll"
+        aria-label="Conversation history"
+        onKeyDown={(event) => {
+          if (
+            !(event.target instanceof HTMLElement) ||
+            !event.target.matches("article[data-message-id]") ||
+            !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)
+          )
+            return;
+          event.preventDefault();
+          const rows = [
+            ...event.currentTarget.querySelectorAll<HTMLElement>(
+              "article[data-message-id]",
+            ),
+          ];
+          const current = rows.indexOf(event.target);
+          const next =
+            event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? rows.length - 1
+                : Math.max(
+                    0,
+                    Math.min(
+                      rows.length - 1,
+                      current + (event.key === "ArrowDown" ? 1 : -1),
+                    ),
+                  );
+          rows[next]?.focus();
+        }}
+
         ref={scroller}
         onScroll={() => {
           const el = scroller.current!;
@@ -731,7 +805,7 @@ function Conversation({
         {view.type === "profile" ? (
           <ProfilePage
             account={account}
-            user={users.find((u) => u.user_id === view.userId)}
+            user={userMap.get(view.userId)}
             userId={view.userId}
             messages={messages}
             loading={loading}
@@ -797,11 +871,7 @@ function Conversation({
               <div className="dm-list">
                 {[...dms].map(([key, { ids, message }]) => {
                   const name = ids
-                    .map(
-                      (id) =>
-                        users.find((u) => u.user_id === id)?.full_name ||
-                        "Unknown user",
-                    )
+                    .map((id) => userMap.get(id)?.full_name || "Unknown user")
                     .join(", ");
                   return (
                     <button
@@ -812,9 +882,7 @@ function Conversation({
                       <Avatar
                         name={name}
                         org={account.url}
-                        url={
-                          users.find((u) => u.user_id === ids[0])?.avatar_url
-                        }
+                        url={userMap.get(ids[0])?.avatar_url}
                       />
                       <span>
                         <strong>{name}</strong>
@@ -833,260 +901,20 @@ function Conversation({
                 })}
               </div>
             ) : (
-              messages.map((message, index) => {
-                const previous = messages[index - 1];
-                const newDay =
-                  !previous ||
-                  new Date(previous.timestamp * 1000).toDateString() !==
-                    new Date(message.timestamp * 1000).toDateString();
-                const grouped =
-                  previous &&
-                  !newDay &&
-                  previous.sender_id === message.sender_id &&
-                  previous.subject === message.subject &&
-                  message.timestamp - previous.timestamp < 300;
-                const reactions = new Map<string, Reaction[]>();
-                for (const reaction of message.reactions) {
-                  const key = `${reaction.reaction_type}:${reaction.emoji_code}`;
-                  reactions.set(key, [...(reactions.get(key) || []), reaction]);
-                }
-                return (
-                  <div key={message.id}>
-                    {newDay && (
-                      <div className="date-divider">
-                        <span>
-                          {new Date(
-                            message.timestamp * 1000,
-                          ).toLocaleDateString(undefined, {
-                            month: "long",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                        </span>
-                      </div>
-                    )}
-                    {view.type === "channel" &&
-                      view.topic === undefined &&
-                      (!previous || previous.subject !== message.subject) && (
-                        <button
-                          className="thread-divider"
-                          onClick={() =>
-                            onSelect({ ...view, topic: message.subject })
-                          }
-                        >
-                          <MessageCircle size={14} />
-                          {message.subject || "(no topic)"}
-                          <ChevronRight size={14} />
-                        </button>
-                      )}
-                    <article
-                      tabIndex={0}
-                      className={`message ${grouped ? "grouped" : ""}`}
-                      aria-label={`Message from ${message.sender_full_name}`}
-                    >
-                      {!grouped ? (
-                        <Avatar
-                          name={message.sender_full_name}
-                          url={message.avatar_url}
-                          org={account.url}
-                        />
-                      ) : (
-                        <time className="group-time">
-                          {new Date(
-                            message.timestamp * 1000,
-                          ).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </time>
-                      )}
-                      <div className="message-body">
-                        {!grouped && (
-                          <div className="message-meta">
-                            <button
-                              onClick={() =>
-                                onSelect({
-                                  type: "profile",
-                                  userId: message.sender_id,
-                                  posts: "channels",
-                                })
-                              }
-                            >
-                              {message.sender_full_name}
-                            </button>
-                            <time
-                              dateTime={new Date(
-                                message.timestamp * 1000,
-                              ).toISOString()}
-                            >
-                              {new Date(
-                                message.timestamp * 1000,
-                              ).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </time>
-                          </div>
-                        )}
-                        {editing === message.id ? (
-                          <form
-                            className="edit-form"
-                            onSubmit={async (e) => {
-                              e.preventDefault();
-                              try {
-                                await request(
-                                  account,
-                                  `/messages/${message.id}`,
-                                  { content: editText },
-                                  "PATCH",
-                                );
-                                setEditing(null);
-                              } catch (e) {
-                                setError(errorText(e));
-                              }
-                            }}
-                          >
-                            <textarea
-                              aria-label="Edit message"
-                              value={editText}
-                              onChange={(e) => setEditText(e.target.value)}
-                              required
-                            />
-                            <button
-                              className="icon-button"
-                              aria-label="Save edit"
-                            >
-                              <Check size={18} />
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-button"
-                              aria-label="Cancel edit"
-                              onClick={() => setEditing(null)}
-                            >
-                              <X size={18} />
-                            </button>
-                          </form>
-                        ) : (
-                          <MessageContent
-                            html={message.rendered_content || message.content}
-                            account={account}
-                          />
-                        )}
-                        {!!reactions.size && (
-                          <div className="reactions">
-                            {[...reactions].map(([key, group]) => (
-                              <button
-                                key={key}
-                                aria-label={`${group[0].emoji_name}: ${group.length} reactions`}
-                                aria-pressed={group.some(
-                                  (r) => r.user_id === account.userId,
-                                )}
-                                className={
-                                  group.some(
-                                    (r) => r.user_id === account.userId,
-                                  )
-                                    ? "mine"
-                                    : ""
-                                }
-                                onClick={() => void react(message, group[0])}
-                              >
-                                {emojiDisplay(group[0])}
-                                <span>{group.length}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="message-actions">
-                        <button
-                          className="icon-button"
-                          aria-label="Add reaction"
-                          title="Add reaction"
-                          onClick={() =>
-                            setPicker(picker === message.id ? null : message.id)
-                          }
-                        >
-                          <SmilePlus size={17} />
-                        </button>
-                        <button
-                          className="icon-button"
-                          aria-label="Reply"
-                          title="Reply"
-                          onClick={() => {
-                            setText(
-                              (t) =>
-                                `${t}${t ? "\n" : ""}@_**${message.sender_full_name}|${message.sender_id}** `,
-                            );
-                            setTopic(message.subject);
-                            composer.current?.focus();
-                          }}
-                        >
-                          <Reply size={17} />
-                        </button>
-                        {message.sender_id === account.userId && (
-                          <button
-                            className="icon-button"
-                            aria-label="Edit message"
-                            title="Edit message"
-                            onClick={async () => {
-                              try {
-                                const data = await request<{
-                                  message: Message;
-                                }>(account, `/messages/${message.id}`, {
-                                  apply_markdown: false,
-                                });
-                                setEditText(data.message.content);
-                                setEditing(message.id);
-                              } catch (e) {
-                                setError(errorText(e));
-                              }
-                            }}
-                          >
-                            <Pencil size={16} />
-                          </button>
-                        )}
-                      </div>
-                      {picker === message.id && (
-                        <div
-                          className="emoji-picker"
-                          role="group"
-                          aria-label="Choose reaction"
-                        >
-                          {[
-                            ["1f44d", "+1", "👍"],
-                            ["2764", "heart", "❤️"],
-                            ["1f389", "tada", "🎉"],
-                            ["1f440", "eyes", "👀"],
-                            ["1f680", "rocket", "🚀"],
-                            ["1f602", "joy", "😂"],
-                          ].map(([code, name, glyph]) => (
-                            <button
-                              key={code}
-                              aria-label={name}
-                              onClick={() =>
-                                void react(message, {
-                                  emoji_name: name,
-                                  emoji_code: code,
-                                  reaction_type: "unicode_emoji",
-                                })
-                              }
-                            >
-                              {glyph}
-                            </button>
-                          ))}
-                          <button
-                            aria-label="Close reactions"
-                            onClick={() => setPicker(null)}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      )}
-                    </article>
-                  </div>
-                );
-              })
+              messages.map((message, index) => (
+                <MessageRow
+                  key={message.id}
+                  account={account}
+                  message={message}
+                  previous={messages[index - 1]}
+                  view={view}
+                  active={message.id === activeMessage}
+                  onFocus={setFocusedMessage}
+                  onSelect={onSelect}
+                  onReply={reply}
+                  onError={setError}
+                />
+              ))
             )}
           </>
         )}
@@ -1131,75 +959,17 @@ function Conversation({
         </div>
       )}
       {view.type !== "home" && view.type !== "profile" && (
-        <div className="compose-area">
-          <form
-            className="composer"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void send();
-            }}
-          >
-            {view.type === "channel" && (
-              <label className="topic-input">
-                <MessageCircle size={14} />
-                <input
-                  aria-label="Thread topic"
-                  maxLength={60}
-                  placeholder="Give this thread a topic…"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  readOnly={!!view.topic}
-                />
-              </label>
-            )}
-            <div className="compose-row">
-              <textarea
-                ref={composer}
-                aria-label="Message"
-                rows={1}
-                placeholder={`Message ${view.type === "channel" ? "#" : "@"}${title}`}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing
-                  ) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-              />
-              <button
-                className="send-button"
-                aria-label="Send message"
-                disabled={sending || !text.trim()}
-              >
-                <Send size={19} />
-              </button>
-            </div>
-          </form>
-          <div className="compose-hint">
-            <span>
-              <strong>Enter</strong> to send · <strong>Shift + Enter</strong>{" "}
-              for a new line
-            </span>
-            <span>Markdown welcome ✨</span>
-          </div>
-        </div>
+        <Composer
+          ref={composer}
+          account={account}
+          view={view}
+          title={title}
+          privateChannel={privateChannel}
+          saved={saved}
+          onSent={sent}
+          onError={setError}
+        />
       )}
     </>
   );
-}
-function emojiDisplay(reaction: Reaction) {
-  if (reaction.reaction_type !== "unicode_emoji")
-    return `:${reaction.emoji_name}:`;
-  try {
-    return String.fromCodePoint(
-      ...reaction.emoji_code.split("-").map((c) => parseInt(c, 16)),
-    );
-  } catch {
-    return `:${reaction.emoji_name}:`;
-  }
-}
+});
