@@ -71,7 +71,7 @@ try {
   await page.getByLabel("Organization URL").fill(account.url);
   await page.getByLabel("Email address").fill(account.email);
   await page.getByLabel("Password", { exact: true }).fill(account.password);
-  await page.getByRole("button", { name: "Let’s go" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(
     page.getByRole("navigation", { name: "Organizations" }),
   ).toBeVisible({ timeout: 20000 });
@@ -363,7 +363,7 @@ try {
   await page.getByLabel("Email address").fill(account.alex.email);
   await page.getByRole("button", { name: "API key / SSO" }).click();
   await page.getByLabel("API key", { exact: true }).fill(account.alex.apiKey);
-  await page.getByRole("button", { name: "Let’s go" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.locator(".org-rail .org")).toHaveCount(2, {
     timeout: 15000,
   });

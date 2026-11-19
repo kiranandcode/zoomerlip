@@ -938,23 +938,9 @@ p {
 .wordmark img {
   width: 34px;
 }
-.wordmark > span {
-  font-family: "DM Sans", sans-serif;
-  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
-  letter-spacing: 1.4px;
-  color: #768575;
-  border: 1px solid #76857544;
-  padding: 4px 6px;
-  border-radius: 4px;
-  margin-left: 4px;
-}
 .story-copy {
   margin: auto 0;
   padding: 70px 0;
-}
-.story-copy .eyebrow {
-  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
-  letter-spacing: 2px;
 }
 .story-copy h1 {
   font-family: "Space Grotesk", sans-serif;
@@ -963,28 +949,11 @@ p {
   line-height: 1.12;
   margin: 24px 0;
 }
-.story-copy h1 span {
-  color: var(--lime);
-}
 .story-copy p {
   font-size: 14px;
   color: #8592a2;
   max-width: 355px;
   line-height: 1.9;
-}
-.story-tags {
-  display: flex;
-  gap: 9px;
-  flex-wrap: wrap;
-  margin-top: 31px;
-}
-.story-tags span {
-  border: 1px solid #ffffff10;
-  background: #ffffff03;
-  border-radius: 7px;
-  padding: 9px 12px;
-  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
-  color: #9cae94;
 }
 .login-story footer {
   color: #5f6d7c;
@@ -1166,9 +1135,6 @@ p {
   }
   .login-story {
     width: 48%;
-  }
-  .wordmark > span {
-    display: none;
   }
   .story-copy h1 {
     font-size: 40px;

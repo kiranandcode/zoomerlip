@@ -83,7 +83,7 @@ try {
   await page.getByLabel("Email address").fill(account.email);
   await page.getByRole("button", { name: "API key / SSO" }).click();
   await page.getByLabel("API key", { exact: true }).fill(account.apiKey);
-  await page.getByRole("button", { name: "Let’s go" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.locator(".members header")).toContainText("10000", {
     timeout: 15000,
   });

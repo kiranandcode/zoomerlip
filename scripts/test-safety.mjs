@@ -304,7 +304,7 @@ try {
     await p.getByLabel("Email address").fill("second@test.invalid");
     await p.getByRole("button", { name: "API key / SSO" }).click();
     await p.getByLabel("API key", { exact: true }).fill("synthetic-second-key");
-    await p.getByRole("button", { name: "Let’s go" }).click();
+    await p.getByRole("button", { name: "Sign in" }).click();
     await expect.poll(h.identityStarted).toBe(true);
     await p.keyboard.press("Escape");
     await expect(
@@ -343,7 +343,7 @@ try {
     await b.getByLabel("Email address").fill("second@test.invalid");
     await b.getByRole("button", { name: "API key / SSO" }).click();
     await b.getByLabel("API key", { exact: true }).fill("synthetic-second-key");
-    await b.getByRole("button", { name: "Let’s go" }).click();
+    await b.getByRole("button", { name: "Sign in" }).click();
     await expect(b.locator(".org-rail .org")).toHaveCount(1);
     await expect(a.locator(".org-rail .org")).toHaveCount(1);
     await expect(

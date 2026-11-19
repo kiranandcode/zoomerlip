@@ -28,24 +28,12 @@ export function Login({
       <section className="login-story">
         <div className="wordmark">
           <img src="/logo.svg" alt="" />
-          zoomerlip<span>FOR ZULIP</span>
+          zoomerlip
         </div>
         <div className="story-copy">
           <img src="/logo.svg" alt="Zoomerlip" width="96" height="96" />
-          <div className="eyebrow">CHANNELS · THREADS · DMs</div>
-          <h1>
-            Zulip,
-            <br />
-            <span>a little more familiar.</span>
-          </h1>
-          <p>
-            Keep your organisations together. Follow topics as threads and pick
-            your own colours.
-          </p>
-          <div className="story-tags">
-            <span># your-community</span>
-            <span>↳ a conversation</span>
-          </div>
+          <h1>Zoomerlip</h1>
+          <p>A Zulip client suitable for zoomers.</p>
         </div>
         <footer>
           <a
@@ -183,7 +171,7 @@ export function Login({
             </div>
           )}
           <button className="primary connect" disabled={busy}>
-            {busy ? "Connecting…" : "Let’s go"}
+            {busy ? "Connecting…" : "Sign in"}
             <ArrowRight size={18} />
           </button>
           <p className="privacy">
