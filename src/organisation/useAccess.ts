@@ -5,7 +5,7 @@ import type { Session } from "../sessionModel";
 import type { Access, UserGroup } from "./permissions";
 import { useOrganisationRevision } from "./lifecycle";
 export function useAccess(account: Account, session?: Session): Access {
-  const revision = useOrganisationRevision(account.id);
+  const revision = useOrganisationRevision(account.id, "permissions");
   const [state, setState] = useState<{ revision: number; groups: UserGroup[] }>(
     { revision: -1, groups: [] },
   );

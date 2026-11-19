@@ -30,6 +30,7 @@ export function organisationSettings(
           "realm_user_group_edit_policy",
           "realm_name",
           "realm_description",
+          "realm_user_settings_defaults",
           "can_create_public_streams",
           "can_create_private_streams",
           "can_subscribe_other_users",
@@ -166,7 +167,7 @@ export function canManageUser(access: Access, target: User) {
     isAdmin(access) &&
     access.me!.user_id !== target.user_id &&
     !target.is_bot &&
-    (isOwner(access) || ![100, 200].includes(target.role || 0))
+    (isOwner(access) || target.role !== 100)
   );
 }
 export function canGroup(
@@ -175,6 +176,14 @@ export function canGroup(
   action: "manage" | "add" | "remove",
 ) {
   if (group.is_system_group || group.deactivated) return false;
+  if (
+    access.featureLevel >= 299 &&
+    inGroup(access, access.settings.realm_can_manage_all_groups) &&
+    (access.featureLevel >= 305 ||
+      (access.me?.role || 600) <= 300 ||
+      group.members.includes(access.me!.user_id))
+  )
+    return true;
   if (access.featureLevel < 283)
     return legacyPolicy(access, access.settings.realm_user_group_edit_policy);
   return inGroup(
@@ -184,5 +193,61 @@ export function canGroup(
       : action === "remove" && access.featureLevel >= 324
         ? group.can_remove_members_group
         : group.can_manage_group,
+  );
+}
+export function canCreateChannel(access: Access, privateChannel: boolean) {
+  if (!access.me?.is_active) return false;
+  const group =
+    access.settings[
+      privateChannel
+        ? "realm_can_create_private_channel_group"
+        : "realm_can_create_public_channel_group"
+    ];
+  return group !== undefined
+    ? inGroup(access, group)
+    : access.settings[
+        privateChannel
+          ? "can_create_private_streams"
+          : "can_create_public_streams"
+      ] === true;
+}
+export function canJoinChannel(access: Access, channel: Channel) {
+  if (!access.me?.is_active) return false;
+  if (access.featureLevel >= 357)
+    return (
+      inGroup(access, channel.can_subscribe_group) ||
+      (!channel.invite_only && access.me.role !== 600)
+    );
+  return !channel.invite_only && access.me.role !== 600;
+}
+export function canMembership(
+  access: Access,
+  channel: Channel,
+  action: "add" | "remove",
+  subscribed: boolean,
+) {
+  if (!access.me?.is_active) return false;
+  if (channel.invite_only && !subscribed && access.featureLevel < 349)
+    return false;
+  if (action === "remove")
+    return (
+      isAdmin(access) ||
+      (access.featureLevel >= 349 && canAdminChannel(access, channel)) ||
+      inGroup(access, channel.can_remove_subscribers_group)
+    );
+  return (
+    inGroup(access, channel.can_add_subscribers_group) ||
+    (!channel.invite_only &&
+      (canAdminChannel(access, channel) ||
+        access.settings.can_subscribe_other_users === true)) ||
+    (subscribed && access.settings.can_subscribe_other_users === true)
+  );
+}
+export function canInvite(access: Access) {
+  return (
+    !!access.me?.is_active &&
+    (access.settings.realm_can_invite_users_group !== undefined
+      ? inGroup(access, access.settings.realm_can_invite_users_group)
+      : access.settings.can_invite_others_to_realm === true)
   );
 }

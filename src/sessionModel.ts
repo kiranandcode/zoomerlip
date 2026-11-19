@@ -251,6 +251,23 @@ export class SessionModel {
           this.state = { ...this.state, users: [...users.values()] };
           changed = true;
         }
+      } else if (
+        e.type === "realm_user_settings_defaults" &&
+        typeof e.property === "string"
+      ) {
+        this.state = {
+          ...this.state,
+          organisation: {
+            ...this.state.organisation,
+            realm_user_settings_defaults: {
+              ...((this.state.organisation
+                .realm_user_settings_defaults as Record<string, unknown>) ||
+                {}),
+              [e.property as string]: e.value,
+            },
+          },
+        };
+        changed = true;
       } else if (e.type === "realm") {
         const updates =
           e.op === "update_dict" && e.data && typeof e.data === "object"
