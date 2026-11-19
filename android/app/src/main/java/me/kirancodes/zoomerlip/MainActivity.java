@@ -23,13 +23,17 @@ import java.util.Collections;
 import java.util.Arrays;
 
 public final class MainActivity extends Activity {
-    private static final int PICK_THEME = 1, SAVE_THEME = 2;
+    private static final int PICK_FILE = 1, SAVE_THEME = 2;
+    private boolean multipleFiles;
+    private NotificationController notifications;
     private WebView web;
     private ValueCallback<Uri[]> fileSelection;
     private String pendingExport;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        notifications = new NotificationController(this);
+        notifications.accept(getIntent());
         FrameLayout root = new FrameLayout(this);
         web = new WebView(this);
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
@@ -88,11 +92,9 @@ public final class MainActivity extends Activity {
                 if (!NavigationPolicy.localDocument(web.getUrl())) return false;
                 if (fileSelection != null) fileSelection.onReceiveValue(null);
                 fileSelection = callback;
-                boolean image = Arrays.stream(params.getAcceptTypes()).anyMatch(type -> type.startsWith("image/"));
-                String[] types = image ? new String[]{"image/png", "image/jpeg", "image/webp"} : new String[]{"application/json", "text/plain", "application/octet-stream"};
-                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
-                    .putExtra(Intent.EXTRA_MIME_TYPES, types);
-                try { startActivityForResult(intent, PICK_THEME); return true; }
+                multipleFiles = params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE;
+                Intent intent = FileChooserPolicy.intent(params);
+                try { startActivityForResult(intent, PICK_FILE); return true; }
                 catch (ActivityNotFoundException e) { fileSelection = null; callback.onReceiveValue(null); return true; }
             }
             @Override public boolean onCreateWindow(WebView view, boolean dialog, boolean gesture, Message message) {
@@ -121,6 +123,11 @@ public final class MainActivity extends Activity {
         });
         // A write-only theme export bridge, restricted to this bundled document's origin.
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            WebViewCompat.addWebMessageListener(web, "ZoomerlipNotifications", Collections.singleton(NavigationPolicy.ORIGIN),
+                (view, message, origin, mainFrame, reply) -> {
+                    if (message.getType() != androidx.webkit.WebMessageCompat.TYPE_STRING || !mainFrame || !NavigationPolicy.ORIGIN.equals(origin.toString()) || !NavigationPolicy.localDocument(view.getUrl())) return;
+                    notifications.handle(message.getData(), reply);
+                });
             WebViewCompat.addWebMessageListener(web, "ZoomerlipThemeExport", Collections.singleton(NavigationPolicy.ORIGIN),
                 (view, message, origin, mainFrame, reply) -> {
                     if (message.getType() != androidx.webkit.WebMessageCompat.TYPE_STRING || !mainFrame || !NavigationPolicy.ORIGIN.equals(origin.toString()) || !NavigationPolicy.localDocument(view.getUrl())) return;
@@ -160,8 +167,8 @@ public final class MainActivity extends Activity {
         super.onActivityResult(request, result, data);
         Uri uri = result == RESULT_OK && data != null ? data.getData() : null;
         if (uri != null && !"content".equals(uri.getScheme())) uri = null;
-        if (request == PICK_THEME && fileSelection != null) {
-            fileSelection.onReceiveValue(uri == null ? null : new Uri[]{uri}); fileSelection = null;
+        if (request == PICK_FILE && fileSelection != null) {
+            fileSelection.onReceiveValue(result == RESULT_OK ? FileChooserPolicy.selected(data, multipleFiles) : null); fileSelection = null;
         } else if (request == SAVE_THEME) {
             String value = pendingExport; pendingExport = null;
             if (uri != null && value != null) {
@@ -171,6 +178,14 @@ public final class MainActivity extends Activity {
                 } catch (Exception e) { Toast.makeText(this, "Could not save the theme.", Toast.LENGTH_SHORT).show(); }
             }
         }
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent); setIntent(intent); notifications.accept(intent);
+        if (NavigationPolicy.localDocument(web.getUrl())) web.evaluateJavascript("window.dispatchEvent(new Event('zoomerlip-native-ready'))", null);
+    }
+    @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(request, permissions, results);
+        if (request == NotificationController.PERMISSION_REQUEST && NavigationPolicy.localDocument(web.getUrl())) notifications.permissionResult();
     }
     @Override public void onBackPressed() { handleBack(); }
     private void handleBack() {

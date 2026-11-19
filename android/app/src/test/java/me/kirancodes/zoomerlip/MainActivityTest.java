@@ -39,4 +39,28 @@ public class MainActivityTest {
             assertEquals(required, info.configChanges & required);
         }
     }
+    @Test public void rotationRetainsCredentialWebViewAndKeyboardInsetsAvoidOverlap() {
+        try (var controller = Robolectric.buildActivity(MainActivity.class).setup()) {
+            MainActivity activity = controller.get();
+            FrameLayout content = activity.findViewById(android.R.id.content);
+            FrameLayout root = (FrameLayout) content.getChildAt(0);
+            WebView web = (WebView) root.getChildAt(0);
+            android.content.res.Configuration config = new android.content.res.Configuration(activity.getResources().getConfiguration());
+            config.orientation = android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+            controller.configurationChange(config);
+            assertSame(activity, controller.get());
+            assertSame(web, root.getChildAt(0));
+            android.view.WindowInsets insets = new android.view.WindowInsets.Builder()
+                .setInsets(android.view.WindowInsets.Type.systemBars(), android.graphics.Insets.of(4, 20, 4, 24))
+                .setInsets(android.view.WindowInsets.Type.ime(), android.graphics.Insets.of(0, 0, 0, 260)).build();
+            root.dispatchApplyWindowInsets(insets);
+            assertEquals(260, root.getPaddingBottom());
+            assertEquals(20, root.getPaddingTop());
+            activity.onBackPressed();
+            String back = org.robolectric.Shadows.shadowOf(web).getLastEvaluatedJavascript();
+            assertTrue(back.contains("dialog[open]"));
+            assertTrue(back.contains("zoomerlip-home"));
+            assertTrue(back.contains("Close channels"));
+        }
+    }
 }
