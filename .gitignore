@@ -8,3 +8,10 @@ local/test-account.json
 playwright-report/
 test-results/
 .DS_Store
+android/.gradle/
+android/local.properties
+android/**/build/
+*.apk
+*.aab
+*.keystore
+*.p12

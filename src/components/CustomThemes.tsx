@@ -162,6 +162,15 @@ export function CustomThemes({
     }
   }
   function download(theme: CustomTheme) {
+    const native = (
+      window as Window & {
+        ZoomerlipThemeExport?: { postMessage: (value: string) => void };
+      }
+    ).ZoomerlipThemeExport;
+    if (location.origin === "https://appassets.androidplatform.net" && native) {
+      native.postMessage(themeJSON(theme));
+      return;
+    }
     const url = URL.createObjectURL(
       new Blob([themeJSON(theme)], { type: "application/json" }),
     );
