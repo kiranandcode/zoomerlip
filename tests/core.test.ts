@@ -141,3 +141,12 @@ describe("message safety", () => {
     ]);
   });
 });
+
+it("strips application overlay classes from remote markup while preserving emoji", () => {
+  const fragment = sanitizeContent(
+    '<div class="modal toast login-screen"><span class="emoji emoji-1f680">rocket</span></div>',
+    "https://org.test",
+  );
+  expect(fragment.querySelector(".modal,.toast,.login-screen")).toBeNull();
+  expect(fragment.textContent).toContain("🚀");
+});

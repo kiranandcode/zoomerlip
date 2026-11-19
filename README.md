@@ -25,7 +25,7 @@ npm test           # auth, sanitization, cache/event consistency
 
 Use **My posts** or your name in the bottom-left corner to open your profile. Click a member or message sender for their posts. Profiles show channel posts by default; **Include DMs** adds only messages accessible to your account. Older posts load on demand.
 
-The palette button beside your name opens **Appearance**: Graphite, Midnight, or Light; four accents; compact/cozy spacing; text size; and motion controls. Preferences persist on this device and respect system reduced motion.
+The palette button beside your name opens **Appearance**: Graphite, Midnight, or Light; four accents; compact/cozy spacing; text size; and motion controls. Preferences persist on this device and respect system reduced motion. **Custom themes** lets you create named palettes, preview colours, and import/export theme JSON. Palettes stay in browser storage; exports contain only theme data. Appearance is also available before login.
 
 Message and topic caches live in memory, separately per account. Warm navigation avoids requests for 60 seconds (topics: five minutes); stale views display cached content during refresh. Live events update cached messages directly. Queue recovery and topic moves reconcile with the server. Up to 24 recent views are retained; inactive histories are trimmed to 300 messages when updated. Drafts and scroll positions survive navigation within retained views, but not reloads. Member rendering is windowed for large organizations. Signing out clears the account cache.
 
@@ -58,4 +58,6 @@ Run `npm ci && npm run build`; serve `dist/` over HTTPS with any static server. 
 
 Planned host: **zoomerlip.kirancodes.me**, server **178.156.241.44**. Before deployment, separately obtain approval to inspect SSH/web-server configuration, publish the static build, change DNS, and stop or remove any kalshitrader service/configuration. No hosting, DNS, or kalshitrader changes are included in this repository setup.
 
-The interface and original lime bolt logo belong to Zoomerlip. No chat brand assets are used. Zulip API reference: [authentication](https://zulip.com/api/fetch-api-key), [events](https://zulip.com/api/register-queue), [private attachments](https://zulip.com/api/get-file-temporary-url).
+The interface and original Zoomerlip logo belong to Zoomerlip. No chat brand assets are used. Zulip API reference: [authentication](https://zulip.com/api/fetch-api-key), [events](https://zulip.com/api/register-queue), [private attachments](https://zulip.com/api/get-file-temporary-url).
+
+Independent client reviews: [Claude](docs/reviews/claude.md), [Astra high](docs/reviews/astra.md), and [resolution status](docs/reviews/README.md).

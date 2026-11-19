@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, KeyRound, X } from "lucide-react";
+import { Appearance } from "./Appearance";
 import { login } from "../api";
 import type { Account } from "../types";
 export function Login({
@@ -9,6 +10,7 @@ export function Login({
   onLogin: (account: Account) => void;
   onClose?: () => void;
 }) {
+  const [appearance, setAppearance] = useState(false);
   const [useKey, setUseKey] = useState(false),
     [url, setUrl] = useState(""),
     [email, setEmail] = useState(""),
@@ -42,7 +44,15 @@ export function Login({
         </div>
         <footer>Built for conversation. Made to feel familiar.</footer>
       </section>
+      {appearance && <Appearance onClose={() => setAppearance(false)} />}
       <section className="login-side">
+        <button
+          type="button"
+          className="login-appearance"
+          onClick={() => setAppearance(true)}
+        >
+          Appearance
+        </button>
         <form
           className="login-card"
           onSubmit={async (event) => {

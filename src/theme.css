@@ -1177,3 +1177,159 @@ button:hover {
     padding: 20px;
   }
 }
+.custom-themes {
+  border-block: 1px solid var(--border);
+  padding: 18px 0;
+  margin-bottom: 22px;
+}
+.custom-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.custom-heading h3 {
+  font-size: 12px;
+  margin: 0;
+}
+.custom-heading > span,
+.custom-themes > p {
+  font-size: 11px;
+  color: var(--muted);
+}
+.custom-themes > p {
+  line-height: 1.5;
+}
+.custom-tools {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.custom-tools button {
+  font-size: 11px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--field);
+}
+.custom-tools .primary {
+  background: var(--accent);
+}
+.custom-theme-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 0;
+}
+.custom-theme-row > button {
+  font-size: 10px;
+  padding: 4px;
+}
+.custom-theme-row .custom-select {
+  font-size: 12px;
+  flex: 1;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.custom-select[aria-pressed="true"] {
+  color: var(--accent);
+}
+.custom-colour {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.theme-editor {
+  margin-top: 18px;
+}
+.theme-editor > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 12px;
+  gap: 15px;
+}
+.theme-editor input:not([type="color"]),
+.theme-editor select {
+  background: var(--field);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 6px;
+  min-width: 0;
+}
+.theme-editor > label input {
+  width: 70%;
+}
+.colour-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.colour-grid label > span {
+  display: block;
+  font-size: 10px;
+  color: var(--secondary);
+  margin-bottom: 5px;
+}
+.colour-grid label > div {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.colour-grid input[type="color"] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.colour-grid input:not([type="color"]) {
+  width: 100%;
+  font-family: monospace;
+  font-size: 11px;
+}
+.theme-contrast {
+  font-size: 10px;
+  color: var(--secondary);
+  line-height: 1.5;
+}
+.theme-editor select:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.login-side {
+  position: relative;
+}
+.login-appearance {
+  position: absolute;
+  right: 24px;
+  top: 20px;
+  font-size: 12px;
+  color: var(--secondary);
+  z-index: 1;
+}
+.login-card input::placeholder {
+  color: var(--muted);
+}
+.login-card > small {
+  color: var(--secondary);
+}
+.toast {
+  color: #fff;
+}
+.login-appearance {
+  background: #25272d;
+  color: #fff;
+  border: 1px solid #777;
+  border-radius: 5px;
+  padding: 7px 10px;
+}
+.login-appearance:hover {
+  color: #fff;
+  background: #373b44;
+}

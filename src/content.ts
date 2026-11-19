@@ -65,6 +65,16 @@ export function sanitizeContent(html: string, org: string): DocumentFragment {
       }
     }
   }
+  // Remote markup must never inherit application controls or overlay styles.
+  for (const element of fragment.querySelectorAll("[class]")) {
+    const safe = [...element.classList].filter((name) =>
+      /^(emoji(?:-[0-9a-f-]+)?|user-mention|user-group-mention|message_inline_image|message_inline_ref|codehilite|spoiler-(?:header|content))$/.test(
+        name,
+      ),
+    );
+    if (safe.length) element.setAttribute("class", safe.join(" "));
+    else element.removeAttribute("class");
+  }
   for (const element of fragment.querySelectorAll<
     HTMLAnchorElement | HTMLImageElement
   >("a, img")) {
