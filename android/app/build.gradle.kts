@@ -6,8 +6,8 @@ android {
         applicationId = "me.kirancodes.zoomerlip"
         minSdk = 26
         targetSdk = 35
-        versionCode = (project.findProperty("zoomerlipVersionCode") as String?)?.toInt() ?: 2
-        versionName = (project.findProperty("zoomerlipVersionName") as String?) ?: "0.1.1"
+        versionCode = (project.findProperty("zoomerlipVersionCode") as String?)?.toInt() ?: 3
+        versionName = (project.findProperty("zoomerlipVersionName") as String?) ?: "0.1.2"
     }
     buildTypes { getByName("release") { isMinifyEnabled = false; isDebuggable = false } }
     compileOptions {

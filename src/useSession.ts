@@ -139,6 +139,7 @@ export function useSession(account: Account, active: boolean): Session {
                   "update_message_flags",
                 ],
                 client_capabilities: {
+                  notification_settings_null: true,
                   user_settings_object: true,
                   simplified_presence_events: true,
                 },
