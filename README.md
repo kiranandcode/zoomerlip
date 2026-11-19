@@ -3,6 +3,10 @@
 
 A [Zulip](https://github.com/zulip/zulip) client suitable for zoomers.
 
+[![Channels](docs/screenshots/channels.png)](docs/screenshots/channels.png)
+
+[![Appearance](docs/screenshots/appearance.png)](docs/screenshots/appearance.png)
+
 [Website](https://zoomerlip.kirancodes.me) · [Source](https://github.com/kiranandcode/zoomerlip)
 
 ## Setup
@@ -14,9 +18,15 @@ npm ci
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173>. Sign in with your organisation URL, email and password, or paste an API key for SSO.
+Open <http://127.0.0.1:5173>.
 
-The client calls each organisation directly over HTTPS. The organisation must allow CORS requests with an Authorization header. API keys stay in browser storage; passwords are discarded after login. Custom palettes stay on your device.
+Sign in with your organisation URL, email and password, or paste an API key for SSO.
+
+The client calls each organisation directly over HTTPS. The organisation must allow CORS requests with an Authorization header.
+
+API keys stay in browser storage; the client discards passwords after login.
+
+Custom palettes stay on your device.
 
 ## Build and test
 
@@ -30,7 +40,11 @@ npm run test:safety
 npm run test:scale
 ```
 
-Browser tests use Chrome and intercepted Zulip responses. Run large builds on the MacBook Pro. Do not use Docker or post test messages to real organisations.
+Browser tests use Chrome and intercepted Zulip responses.
+
+Run large builds on the MacBook Pro.
+
+Do not use Docker or post test messages to real organisations.
 
 ## Android
 
@@ -41,8 +55,12 @@ Requires Java 17 and Android SDK 35.
 # android/app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
-The Android app bundles the same client. Sign release APKs on the trusted Mac and distribute them through Vibux Approver.
+The Android app bundles the same client.
+
+Sign release APKs on the trusted Mac and distribute them through Vibux Approver.
 
 ## Deploy
 
-Serve `dist/` over HTTPS. See [ops/](ops/) for Caddy configuration, release staging and rollback.
+Serve `dist/` over HTTPS.
+
+See [ops/](ops/) for Caddy configuration, release staging and rollback.

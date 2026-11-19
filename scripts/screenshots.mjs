@@ -103,6 +103,7 @@ const messages = posts.map(([sender, content], i) => ({
 }));
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 async function setup(context, signedIn) {
+  const ready = new Set();
   if (signedIn)
     await context.addInitScript(
       (a) => localStorage.setItem("zoomerlip.accounts.v1", JSON.stringify(a)),
@@ -133,8 +134,11 @@ async function setup(context, signedIn) {
           ],
         },
       };
-    else if (path.endsWith("/events")) return;
-    else if (path.endsWith("/topics"))
+    else if (path.endsWith("/events")) {
+      if (ready.has(index)) return;
+      ready.add(index);
+      data = { ...data, events: [{ id: 1, type: "heartbeat" }] };
+    } else if (path.endsWith("/topics"))
       data = {
         ...data,
         topics: [
@@ -173,14 +177,22 @@ try {
   await page.goto(url);
   await page.getByRole("button", { name: "type-theory", exact: true }).click();
   await page
+    .locator(".sidebar")
     .getByRole("button", { name: "Induction on lists", exact: true })
     .click();
   await expect(page.locator(".message")).toHaveCount(messages.length);
   await page.evaluate(() => document.fonts.ready);
-  await page.screenshot({ path: "docs/screenshots/channels.png" });
+  await expect(page.locator(".org-header")).toContainText("Live");
+  await page.screenshot({
+    path: "docs/screenshots/channels.png",
+    animations: "disabled",
+  });
   await page.getByRole("button", { name: "Appearance", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await page.screenshot({ path: "docs/screenshots/appearance.png" });
+  await page.screenshot({
+    path: "docs/screenshots/appearance.png",
+    animations: "disabled",
+  });
   await context.close();
   const landing = await browser.newContext({
     viewport: { width: 1440, height: 960 },
@@ -191,7 +203,10 @@ try {
   const welcome = await landing.newPage();
   await welcome.goto(url);
   await welcome.evaluate(() => document.fonts.ready);
-  await welcome.screenshot({ path: "docs/screenshots/login.png" });
+  await welcome.screenshot({
+    path: "docs/screenshots/login.png",
+    animations: "disabled",
+  });
   await landing.close();
   console.log("Saved synthetic workspace, appearance and login screenshots.");
 } finally {
