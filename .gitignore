@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env*
+local/.secrets/
+local/upstream/
+local/test-account.json
+playwright-report/
+test-results/
+.DS_Store
