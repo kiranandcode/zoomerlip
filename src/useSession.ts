@@ -1,3 +1,4 @@
+import { messagingEvent } from "./messaging/lifecycle";
 import { useEffect, useState } from "react";
 import { getCache } from "./cache";
 import { clearUploadCache } from "./uploads";
@@ -72,6 +73,7 @@ export function useSession(account: Account, _active: boolean): Session {
                   "update_message",
                   "delete_message",
                   "reaction",
+                  "drafts",
                   "subscription",
                   "stream",
                   "realm_user",
@@ -149,6 +151,7 @@ export function useSession(account: Account, _active: boolean): Session {
           }
           if (next.mutedUsers !== before.mutedUsers)
             cache.setMutedUsers(next.mutedUsers);
+          messagingEvent(account, events);
           cache.events(events.filter((e) => e.type !== "heartbeat"));
           if (events.length) last = events.at(-1)!.id;
           // Publish only real changes: every new state re-renders the whole app.

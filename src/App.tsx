@@ -1332,6 +1332,7 @@ const Conversation = memo(function Conversation({
           view={view}
           title={title}
           privateChannel={privateChannel}
+          onSelect={onSelect}
           saved={saved}
           onSent={sent}
           onError={setError}

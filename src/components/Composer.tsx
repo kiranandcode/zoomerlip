@@ -8,6 +8,16 @@ import {
   useState,
 } from "react";
 import { Lock, MessageCircle, Send } from "lucide-react";
+import { DraftList } from "../messaging/DraftList";
+import {
+  destinationKey,
+  draftFor,
+  persistDraft,
+  saveDraft,
+} from "../messaging/drafts";
+import type { Draft as StoredDraft } from "../messaging/drafts";
+import { getCache } from "../cache";
+import "../messaging/messaging.css";
 import { request } from "../api";
 import { sendsOnEnter, touchPrimary } from "../composerKeys";
 import type { Account, Message, View } from "../types";
@@ -26,19 +36,85 @@ export const Composer = memo(
       title: string;
       privateChannel: boolean;
       saved: Draft;
+      onSelect: (view: View) => void;
       onSent: (topic: string) => void;
       onError: (error: string) => void;
     }
   >(function Composer(
-    { account, view, title, privateChannel, saved, onSent, onError },
+    { account, view, title, privateChannel, saved, onSelect, onSent, onError },
     ref,
   ) {
-    const [text, setText] = useState(saved.text),
-      [topic, setTopic] = useState(saved.topic),
+    const [initial] = useState(() => {
+      const d = draftFor(account.id, view);
+      if (d) {
+        saved.text = d.text;
+        saved.topic = d.topic;
+      }
+      return d;
+    });
+    const [text, setText] = useState(initial?.text ?? saved.text),
+      [topic, setTopic] = useState(initial?.topic ?? saved.topic),
+      [showDrafts, setShowDrafts] = useState(false),
       [sending, setSending] = useState(false);
     const input = useRef<HTMLTextAreaElement>(null),
       alive = useRef(true),
-      busy = useRef(false);
+      busy = useRef(false),
+      operation = useRef(new AbortController()),
+      lastSaved = useRef(initial?.text ?? saved.text);
+    function persist(nextText: string, nextTopic: string) {
+      if (operation.current.signal.aborted) return;
+      saved.text = nextText;
+      saved.topic = nextTopic;
+      try {
+        persistDraft(
+          account.id,
+          {
+            id: destinationKey(view),
+            view,
+            text: nextText,
+            topic: nextTopic,
+            updated: Date.now(),
+          },
+          lastSaved.current,
+        );
+        lastSaved.current = nextText;
+      } catch (e) {
+        onError(
+          e instanceof Error
+            ? e.message
+            : "Draft could not be saved on this device.",
+        );
+      }
+    }
+    function changeText(value: string) {
+      setText(value);
+      persist(value, topic);
+    }
+    function restore(d: StoredDraft) {
+      try {
+        if (text.trim())
+          saveDraft(account.id, {
+            id: crypto.randomUUID(),
+            view,
+            text,
+            topic,
+            updated: Date.now(),
+          });
+        saveDraft(account.id, { ...d, id: destinationKey(d.view) });
+        const target = getCache(account).ui(d.view);
+        target.text = d.text;
+        target.topic = d.topic;
+        if (destinationKey(d.view) === destinationKey(view)) {
+          setText(d.text);
+          setTopic(d.topic);
+          lastSaved.current = d.text;
+        }
+        setShowDrafts(false);
+        onSelect(d.view);
+      } catch (e) {
+        onError(e instanceof Error ? e.message : "Restore failed.");
+      }
+    }
     const [touch] = useState(touchPrimary);
     // Grow with the draft up to the CSS max-height; then the textarea scrolls.
     useLayoutEffect(() => {
@@ -49,7 +125,24 @@ export const Composer = memo(
     }, [text]);
     useEffect(() => {
       alive.current = true;
+      operation.current = new AbortController();
+      const reset = (e: Event) => {
+        const d = (e as CustomEvent).detail;
+        if (
+          d.accountId === account.id &&
+          (!d.streams ||
+            (view.type === "channel" && d.streams.includes(view.channelId)))
+        ) {
+          operation.current.abort();
+          setText("");
+          setShowDrafts(false);
+          saved.text = "";
+        }
+      };
+      window.addEventListener("zoomerlip-messaging-reset", reset);
       return () => {
+        operation.current.abort();
+        window.removeEventListener("zoomerlip-messaging-reset", reset);
         alive.current = false;
       };
     }, []);
@@ -60,7 +153,10 @@ export const Composer = memo(
         reply: (message) => {
           setText((current) => {
             const next = `${current}${current ? "\n" : ""}@_**${message.sender_full_name}|${message.sender_id}** `;
-            saved.text = next;
+            persist(
+              next,
+              view.type === "channel" && !view.topic ? message.subject : topic,
+            );
             return next;
           });
           if (view.type === "channel" && !view.topic) {
@@ -70,7 +166,7 @@ export const Composer = memo(
           input.current?.focus();
         },
       }),
-      [saved, view],
+      [saved, view, topic],
     );
     async function send() {
       if (!text.trim() || busy.current) return;
@@ -100,8 +196,9 @@ export const Composer = memo(
               }
             : { type: "private", to: view.userIds, content: sentText },
           "POST",
+          operation.current.signal,
         );
-        if (saved.text === sentText) saved.text = "";
+        if (saved.text === sentText) persist("", sentTopic);
         if (!alive.current) return;
         setText((current) => (current === sentText ? "" : current));
         onSent(sentTopic);
@@ -132,6 +229,18 @@ export const Composer = memo(
             <span>Direct message · {title}</span>
           )}
         </div>
+        <div className="messaging-tools">
+          <button type="button" onClick={() => setShowDrafts(!showDrafts)}>
+            Drafts
+          </button>
+        </div>
+        {showDrafts && (
+          <DraftList
+            account={account}
+            onRestore={restore}
+            onClose={() => setShowDrafts(false)}
+          />
+        )}
         <form
           className="composer"
           onSubmit={(event) => {
@@ -150,7 +259,7 @@ export const Composer = memo(
                 value={topic}
                 onChange={(e) => {
                   setTopic(e.target.value);
-                  saved.topic = e.target.value;
+                  persist(text, e.target.value);
                 }}
                 readOnly={!!view.topic}
               />
@@ -172,8 +281,7 @@ export const Composer = memo(
               placeholder={`Message ${view.type === "channel" ? "#" : "@"}${title}`}
               value={text}
               onChange={(e) => {
-                setText(e.target.value);
-                saved.text = e.target.value;
+                changeText(e.target.value);
               }}
               onKeyDown={(event) => {
                 if (

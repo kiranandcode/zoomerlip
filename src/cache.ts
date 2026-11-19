@@ -1,3 +1,4 @@
+import { invalidateMessaging } from "./messaging/lifecycle";
 import { clearContentCache } from "./contentCache";
 import { ApiError, getFeatureLevel, narrow, request } from "./api";
 import type {
@@ -930,6 +931,7 @@ export class OrgCache {
   purgeStreams(ids: number[]) {
     const removed = new Set(ids);
     if (!removed.size) return;
+    invalidateMessaging(this.account.id, ids);
     clearContentCache(this.account.url);
     for (const id of removed) {
       this.blockedStreams.add(id);
@@ -962,6 +964,7 @@ export class OrgCache {
     if (changed) this.notifyNavigation();
   }
   lock() {
+    invalidateMessaging(this.account.id);
     clearContentCache(this.account.url);
     this.locked = true;
     this.cancelRequests();
