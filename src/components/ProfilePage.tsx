@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PresenceStatus, StatusEditor } from "../live/PresenceStatus";
 import { ProfileEditor } from "./ProfileEditor";
 import { ArrowLeft, MessageCircle, Hash, UserRound } from "lucide-react";
 import { Avatar } from "./Avatar";
@@ -104,6 +105,8 @@ export function ProfilePage({
           </span>
         </div>
         <h1>{name}</h1>
+        <PresenceStatus account={account} userId={userId} />
+        {own && <StatusEditor key={account.id} account={account} />}
         <p>
           {user?.email && !/user\d+@/.test(user.email)
             ? user.email

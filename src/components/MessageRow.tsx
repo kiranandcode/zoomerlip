@@ -1,3 +1,4 @@
+import { ReadReceipts } from "../live/ReadReceipts";
 import {
   memo,
   useEffect,
@@ -363,6 +364,7 @@ export const MessageRow = memo(function MessageRow({
           <MoreHorizontal size={18} />
         </button>
         <div className="message-actions">
+          <ReadReceipts account={account} messageId={message.id} />
           <button
             ref={trigger}
             className="icon-button"

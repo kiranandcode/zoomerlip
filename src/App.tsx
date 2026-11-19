@@ -53,6 +53,9 @@ import type { Session } from "./useSession";
 import type { Account, Message, Topic, User, View } from "./types";
 import { Login } from "./components/Login";
 import { MessageRow } from "./components/MessageRow";
+import { PresenceStatus } from "./live/PresenceStatus";
+import "./live/live.css";
+import { TypingIndicator } from "./live/TypingIndicator";
 import { Composer } from "./components/Composer";
 import type { ComposerHandle } from "./components/Composer";
 import { readingAnchor, restoreAnchor } from "./scrollAnchor";
@@ -725,7 +728,10 @@ const Workspace = memo(function Workspace({
                 url={user.avatar_url}
                 org={account.url}
               />
-              <span>{user.full_name}</span>
+              <span>
+                {user.full_name}
+                <PresenceStatus account={account} userId={user.user_id} />
+              </span>
             </button>
           ))}
           {visiblePeople.length > 40 && (
@@ -1099,6 +1105,9 @@ const Conversation = memo(function Conversation({
   return (
     <>
       {view.type !== "home" && view.type !== "profile" && (
+        <TypingIndicator account={account} view={view} users={users} />
+      )}
+      {view.type !== "home" && view.type !== "profile" && (
         <a
           className="skip-composer"
           href="#message-composer"
@@ -1324,6 +1333,9 @@ const Conversation = memo(function Conversation({
             Reload
           </button>
         </div>
+      )}
+      {view.type !== "home" && view.type !== "profile" && (
+        <TypingIndicator account={account} view={view} users={users} />
       )}
       {view.type !== "home" && view.type !== "profile" && (
         <Composer

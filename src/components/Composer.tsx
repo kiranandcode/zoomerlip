@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { Lock, MessageCircle, Send } from "lucide-react";
+import { useTyping } from "../live/typing";
 import { request } from "../api";
 import { sendsOnEnter, touchPrimary } from "../composerKeys";
 import type { Account, Message, View } from "../types";
@@ -40,6 +41,7 @@ export const Composer = memo(
       alive = useRef(true),
       busy = useRef(false);
     const [touch] = useState(touchPrimary);
+    const typing = useTyping(account, view, topic);
     // Grow with the draft up to the CSS max-height; then the textarea scrolls.
     useLayoutEffect(() => {
       const el = input.current;
@@ -82,6 +84,7 @@ export const Composer = memo(
         );
         return;
       }
+      typing.stop();
       const sentText = text,
         sentTopic = topic.trim();
       busy.current = true;
@@ -171,9 +174,12 @@ export const Composer = memo(
               enterKeyHint={touch ? "enter" : "send"}
               placeholder={`Message ${view.type === "channel" ? "#" : "@"}${title}`}
               value={text}
+              onBlur={() => typing.stop()}
               onChange={(e) => {
                 setText(e.target.value);
                 saved.text = e.target.value;
+                if (e.target.value.trim()) typing.input();
+                else typing.stop();
               }}
               onKeyDown={(event) => {
                 if (

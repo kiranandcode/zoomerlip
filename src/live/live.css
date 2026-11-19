@@ -1,0 +1,41 @@
+.typing-indicator {
+  min-height: 1.4rem;
+  padding: 0 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.presence-status {
+  display: block;
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-settings {
+  margin: 0.75rem 0;
+  max-width: 40rem;
+}
+.live-settings summary {
+  cursor: pointer;
+  padding: 0.5rem 0;
+}
+.live-settings form,
+.live-settings label {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+.live-settings form {
+  flex-direction: column;
+}
+.live-settings label {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.live-settings input:not([type="checkbox"]),
+.live-settings select {
+  max-width: 100%;
+  padding: 0.4rem;
+}
+.live-settings small {
+  display: block;
+}

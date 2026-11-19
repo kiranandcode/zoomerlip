@@ -1,18 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCache } from "./cache";
 import { clearUploadCache } from "./uploads";
 import { ApiError, pause, request } from "./api";
+import { startPresence } from "./live/presence";
+import { liveStore, releaseLive } from "./live/store";
 import { initialSession, SessionModel } from "./sessionModel";
 import type { Registration, Session } from "./sessionModel";
 import type { Account, ZulipEvent } from "./types";
 export type { Session } from "./sessionModel";
-export function useSession(account: Account, _active: boolean): Session {
+export function useSession(account: Account, active: boolean): Session {
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const [state, setState] = useState<Session>(initialSession);
   useEffect(() => {
     const lifetime = new AbortController(),
       signal = lifetime.signal,
       cache = getCache(account),
-      model = new SessionModel();
+      model = new SessionModel(),
+      live = liveStore(account.id);
+    live.clear();
+    const stopPresence = startPresence(
+      account,
+      live,
+      () => activeRef.current,
+      signal,
+    );
+    const expiry = setInterval(() => live.expire(), 1000);
     let queue = "",
       last = -1,
       retry = 0,
@@ -27,6 +40,7 @@ export function useSession(account: Account, _active: boolean): Session {
     };
     const lock = (message: string) => {
       cache.lock();
+      live.clear();
       clearUploadCache(account.id);
       model.state = {
         ...initialSession,
@@ -79,9 +93,15 @@ export function useSession(account: Account, _active: boolean): Session {
                   "update_message_flags",
                   "muted_users",
                   "user_topic",
+                  "typing",
+                  "presence",
+                  "user_status",
+                  "user_settings",
                 ],
                 fetch_event_types: [
                   "subscription",
+                  "user_status",
+                  "user_settings",
                   "realm_user",
                   "realm",
                   "muted_users",
@@ -90,6 +110,7 @@ export function useSession(account: Account, _active: boolean): Session {
                   "message",
                   "update_message_flags",
                 ],
+                client_capabilities: { user_settings_object: true },
                 apply_markdown: true,
                 client_gravatar: false,
               },
@@ -107,6 +128,7 @@ export function useSession(account: Account, _active: boolean): Session {
                   )
                 : 90000;
             model.register(data, account.name);
+            live.register(data as unknown as Record<string, unknown>);
             cache.unlock();
             const registered = new Set(
               model.state.channels.map((c) => c.stream_id),
@@ -142,6 +164,7 @@ export function useSession(account: Account, _active: boolean): Session {
           const before = model.state,
             previous = before.channels.map((c) => c.stream_id);
           const next = model.apply(events, account.userId);
+          live.events(events, account);
           if (next.channels !== before.channels) {
             const subscribed = new Set(next.channels.map((c) => c.stream_id));
             cache.purgeStreams(previous.filter((id) => !subscribed.has(id)));
@@ -186,6 +209,9 @@ export function useSession(account: Account, _active: boolean): Session {
     void run();
     return () => {
       finished = true;
+      clearInterval(expiry);
+      stopPresence();
+      releaseLive(account.id);
       lifetime.abort();
       poll?.abort();
       window.removeEventListener("zoomerlip-auth-failed", authFailed);
