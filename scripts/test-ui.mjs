@@ -24,7 +24,11 @@ const messages = Array.from({ length: 300 }, (_, i) => ({
   display_recipient: "private-room",
   reactions: [],
 }));
-const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--disable-gpu"] });
+const browser = await chromium.launch({
+  channel: "chrome",
+  headless: true,
+  args: ["--disable-gpu"],
+});
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1000 },
 });
