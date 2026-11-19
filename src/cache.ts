@@ -1,4 +1,4 @@
-import { ApiError, narrow, request } from "./api";
+import { ApiError, getFeatureLevel, narrow, request } from "./api";
 import type {
   Account,
   Message,
@@ -359,7 +359,7 @@ export class OrgCache {
               anchor: "newest",
               num_before: 60,
               num_after: 0,
-              narrow: narrow(view),
+              narrow: narrow(view, getFeatureLevel(this.account.url)),
               apply_markdown: true,
             },
             "GET",
@@ -433,7 +433,7 @@ export class OrgCache {
             include_anchor: false,
             num_before: 60,
             num_after: 0,
-            narrow: narrow(view),
+            narrow: narrow(view, getFeatureLevel(this.account.url)),
             apply_markdown: true,
           },
           "GET",

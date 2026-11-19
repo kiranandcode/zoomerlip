@@ -91,6 +91,17 @@ export function sanitizeContent(html: string, org: string): DocumentFragment {
         element.removeAttribute(attr);
         continue;
       }
+      if (
+        attr === "src" &&
+        url.protocol === "http:" &&
+        !(
+          url.origin === org &&
+          ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+        )
+      ) {
+        element.removeAttribute(attr);
+        continue;
+      }
       element.setAttribute(attr, url.href);
       if (element instanceof HTMLAnchorElement) {
         element.target = "_blank";

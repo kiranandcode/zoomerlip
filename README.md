@@ -27,7 +27,9 @@ Use **My posts** or your name in the bottom-left corner to open your profile. Cl
 
 The palette button beside your name opens **Appearance**: Graphite, Midnight, or Light; four accents; compact/cozy spacing; text size; and motion controls. Preferences persist on this device and respect system reduced motion. **Custom themes** lets you create named palettes, preview colours, and import/export theme JSON. Palettes stay in browser storage; exports contain only theme data. Appearance is also available before login.
 
-Message and topic caches live in memory, separately per account. Warm navigation avoids requests for 60 seconds (topics: five minutes); stale views display cached content during refresh. Live events update cached messages directly. Queue recovery and topic moves reconcile with the server. Up to 24 recent views are retained; inactive histories are trimmed to 300 messages when updated. Drafts and scroll positions survive navigation within retained views, but not reloads. Member rendering is windowed for large organizations. Signing out clears the account cache.
+Message and topic caches live in memory, separately per account. Warm navigation avoids requests for 60 seconds (topics: five minutes); stale views display cached content during refresh. Live events update cached messages directly. Queue recovery and topic moves reconcile with the server. Up to 24 recent views are retained; inactive histories are trimmed to 300 messages when updated. Drafts and scroll positions survive navigation within retained views, but not reloads. Member rendering is windowed for large organizations. Signing out clears the account cache and signs out other tabs. Revoked channel access purges affected history; invalid credentials lock the workspace.
+
+Right-click a thread, press **Shift+F10**, or use its **…** button to mark it read or mute it for 15 minutes, 1 hour, 8 hours, 24 hours, or until unmuted. Muted threads fade and stop contributing to unread badges. These mutes apply in this browser, synchronize across its tabs, and expire automatically. Zulip’s existing mute preferences are also respected.
 
 Features: concurrent organization event queues, subscribed channels, nested topics, individual/group DM history, member list, grouped messages, reactions, replies, editing your messages, and older-message pagination. Failed sends retain the draft. Queue expiration re-registers; connection failures back off. Rendered HTML passes through DOMPurify. Private uploads use Zulip’s temporary-URL endpoint; signed URLs are fetched immediately and never persisted.
 
@@ -42,6 +44,9 @@ sh scripts/local-http.sh
 node scripts/seed-local.mjs
 npm run test:local           # requires Chrome; npm run dev in another terminal
 npm run test:scale           # 10,000 synthetic members; creates no server users
+npm run test:themes          # theme editor and storage failures
+ZOOMERLIP_TEST_URL=http://127.0.0.1:4173 npm run test:ui
+ZOOMERLIP_TEST_URL=http://127.0.0.1:4173 npm run test:safety
 ```
 
 The checked-in configuration comes from official [docker-zulip](https://github.com/zulip/docker-zulip), using Zulip 13.3. Setup generates ignored local secrets. Port 8080 binds only to 127.0.0.1. The HTTP helper disables production hostname/HTTPS and proxy checks **inside the disposable test container**. Re-run it after restarting the container. Do not use this configuration in production. Initial database migrations take several minutes.

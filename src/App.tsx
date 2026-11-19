@@ -26,6 +26,8 @@ import {
   UserRound,
   Palette,
   Lock,
+  MoreHorizontal,
+  BellOff,
 } from "lucide-react";
 import { clearCache, getCache } from "./cache";
 import { useMessages } from "./useMessages";
@@ -33,7 +35,22 @@ import { Avatar, initials } from "./components/Avatar";
 import { ProfilePage } from "./components/ProfilePage";
 import { Appearance } from "./components/Appearance";
 import { MemberList } from "./components/MemberList";
-import { readAccounts, saveAccounts } from "./api";
+import { readAccounts } from "./api";
+import {
+  putAccount,
+  removeAccount,
+  accountStorageEvent,
+} from "./accountStorage";
+import { topicKey, serverMutesTopic } from "./sessionModel";
+import {
+  readThreadMutes,
+  useThreadMutes,
+  useThreadMuteVersion,
+} from "./topicPreferences";
+import { TopicMenu } from "./components/TopicMenu";
+import type { TopicMenuTarget } from "./components/TopicMenu";
+import { clearUploadCache } from "./uploads";
+import type { RecentConversation } from "./types";
 import { useSession } from "./useSession";
 import type { Session } from "./useSession";
 import type { Account, Message, Topic, User, View } from "./types";
@@ -59,6 +76,7 @@ function SessionBridge({
   return null;
 }
 export default function App() {
+  const muteVersion = useThreadMuteVersion();
   const [accounts, setAccounts] = useState(readAccounts);
   const [activeId, setActiveId] = useState(() => accounts[0]?.id);
   const [sessions, setSessions] = useState<Record<string, Session>>({});
@@ -67,37 +85,112 @@ export default function App() {
   const report = useRef((id: string, state: Session) =>
     setSessions((s) => ({ ...s, [id]: state })),
   ).current;
+  const unreadCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        accounts.map((a) => {
+          const session = sessions[a.id];
+          if (!session) return [a.id, 0];
+          const local = readThreadMutes(a.id);
+          const removed = Object.keys(local).reduce((sum, key) => {
+            try {
+              const [id, topic] = JSON.parse(key);
+              return (
+                sum +
+                (serverMutesTopic(session, id, topic)
+                  ? 0
+                  : session.topicUnreads[key] || 0)
+              );
+            } catch {
+              return sum;
+            }
+          }, 0);
+          return [a.id, Math.max(0, session.unread - removed)];
+        }),
+      ),
+    [accounts, sessions, muteVersion],
+  );
   const active = accounts.find((a) => a.id === activeId) || accounts[0];
-  function update(next: Account[]) {
-    try {
-      saveAccounts(next);
-      accounts
-        .filter((a) => !next.some((n) => n.id === a.id))
-        .forEach((a) => clearCache(a.id));
+  const accountRef = useRef(accounts);
+  accountRef.current = accounts;
+  useEffect(() => {
+    const sync = () => {
+      const old = accountRef.current;
+      const next = readAccounts().map(
+        (a) =>
+          old.find(
+            (p) =>
+              p.id === a.id && p.apiKey === a.apiKey && p.email === a.email,
+          ) || a,
+      );
+      for (const a of old)
+        if (!next.some((n) => n.id === a.id && n.apiKey === a.apiKey)) {
+          getCache(a).lock();
+          clearCache(a.id);
+          clearUploadCache(a.id);
+        }
+      accountRef.current = next;
       setAccounts(next);
+      setSessions((s) =>
+        Object.fromEntries(
+          Object.entries(s).filter(([id]) => next.some((a) => a.id === id)),
+        ),
+      );
+    };
+    const storage = (e: StorageEvent) => {
+      if (accountStorageEvent(e)) sync();
+    };
+    window.addEventListener("storage", storage);
+    window.addEventListener("zoomerlip-accounts", sync);
+    return () => {
+      window.removeEventListener("storage", storage);
+      window.removeEventListener("zoomerlip-accounts", sync);
+    };
+  }, []);
+  function onLogin(account: Account) {
+    try {
+      putAccount(account);
       setStorageError("");
+      setActiveId(account.id);
+      setAdding(false);
     } catch {
       setStorageError(
-        "Browser storage is unavailable. Allow local storage to save your organizations.",
+        "Browser storage is unavailable. Could not save credentials.",
       );
       throw new Error("Could not save credentials.");
     }
   }
-  function onLogin(account: Account) {
-    update([...accounts.filter((a) => a.id !== account.id), account]);
-    setActiveId(account.id);
-    setAdding(false);
-  }
   const logout = useCallback(() => {
     if (
-      active &&
-      window.confirm(
+      !active ||
+      !window.confirm(
         `Remove ${active.name} and its saved API key from this browser?`,
       )
     )
-      update(accounts.filter((a) => a.id !== active.id));
-  }, [active, accounts]);
-  if (!active) return <Login onLogin={onLogin} />;
+      return;
+    getCache(active).lock();
+    clearUploadCache(active.id);
+    try {
+      removeAccount(active.id);
+      setStorageError("");
+    } catch {
+      setAccounts((list) => list.filter((a) => a.id !== active.id));
+      setStorageError(
+        "Signed out here, but browser storage could not be cleared. Remove this site’s saved data before sharing this browser.",
+      );
+    }
+  }, [active]);
+  if (!active)
+    return (
+      <>
+        <Login onLogin={onLogin} />
+        {storageError && (
+          <div role="alert" className="toast">
+            {storageError}
+          </div>
+        )}
+      </>
+    );
   return (
     <>
       <div className="app-shell">
@@ -124,7 +217,7 @@ export default function App() {
             <button
               key={a.id}
               title={sessions[a.id]?.name || a.name}
-              aria-label={`Open ${sessions[a.id]?.name || a.name}${sessions[a.id]?.unread ? `, ${sessions[a.id].unread} unread` : ""}`}
+              aria-label={`Open ${sessions[a.id]?.name || a.name}${unreadCounts[a.id] ? `, ${unreadCounts[a.id]} unread` : ""}`}
               aria-pressed={a.id === active.id}
               className={`rail-button org ${a.id === active.id ? "selected" : ""}`}
               style={
@@ -133,9 +226,9 @@ export default function App() {
               onClick={() => setActiveId(a.id)}
             >
               {initials(sessions[a.id]?.name || a.name)}
-              {a.id !== active.id && !!sessions[a.id]?.unread && (
+              {a.id !== active.id && !!unreadCounts[a.id] && (
                 <span className="badge">
-                  {sessions[a.id].unread > 99 ? "99+" : sessions[a.id].unread}
+                  {unreadCounts[a.id] > 99 ? "99+" : unreadCounts[a.id]}
                 </span>
               )}
             </button>
@@ -214,6 +307,9 @@ const Workspace = memo(function Workspace({
     cache.subscribeTopics,
     cache.topicSnapshot,
   );
+  const threadMutes = useThreadMutes(account.id);
+  const [topicMenu, setTopicMenu] = useState<TopicMenuTarget | null>(null);
+  const closeTopicMenu = useCallback(() => setTopicMenu(null), []);
   const [appearance, setAppearance] = useState(false);
   const [topicLimits, setTopicLimits] = useState<Record<number, number>>({});
   const [view, setView] = useState<View>({ type: "home" });
@@ -224,8 +320,65 @@ const Workspace = memo(function Workspace({
     [showNav, setShowNav] = useState(false),
     [topicError, setTopicError] = useState("");
   const search = useDeferredValue(filter.toLowerCase());
-  const channels = session?.channels || [],
-    users = session?.users || emptyUsers;
+  const channels = session?.channels || [];
+  const users = useMemo(
+    () =>
+      (session?.users || emptyUsers).filter(
+        (u) => !session?.mutedUsers?.includes(u.user_id),
+      ),
+    [session?.users, session?.mutedUsers],
+  );
+  const navigationVersion = useSyncExternalStore(
+    cache.subscribeNavigation,
+    cache.navigationSnapshot,
+  );
+  const lastNavigation = useRef(navigationVersion);
+  useLayoutEffect(() => {
+    if (lastNavigation.current === navigationVersion) return;
+    lastNavigation.current = navigationVersion;
+    setView((current) => {
+      let target = cache.resolveView(current);
+      if (current.type === "channel" && current.topic === undefined) {
+        const draft = cache.ui(current);
+        if (draft.topic) {
+          const typed = { ...current, topic: draft.topic };
+          const moved = cache.resolveView(typed);
+          if (JSON.stringify(moved) !== JSON.stringify(typed)) {
+            target = moved;
+            const next = cache.ui(target);
+            if (!next.text) {
+              next.text = draft.text;
+              next.topic = target.type === "channel" ? target.topic || "" : "";
+              draft.text = "";
+            }
+          }
+        }
+      }
+      return target;
+    });
+  }, [cache, navigationVersion]);
+  useEffect(() => {
+    if (!session?.ready) return;
+    setView((current) =>
+      current.type === "channel" &&
+      !session.channels.some((c) => c.stream_id === current.channelId)
+        ? { type: "home" }
+        : current.type === "profile" &&
+            session.mutedUsers.includes(current.userId)
+          ? { type: "home" }
+          : current,
+    );
+    setExpanded((ids) =>
+      ids.filter((id) => session.channels.some((c) => c.stream_id === id)),
+    );
+    setTopics((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([id]) =>
+          session.channels.some((c) => c.stream_id === Number(id)),
+        ),
+      ),
+    );
+  }, [session?.channels, session?.mutedUsers, session?.ready]);
   const userMap = useMemo(
     () => new Map(users.map((user) => [user.user_id, user])),
     [users],
@@ -264,18 +417,22 @@ const Workspace = memo(function Workspace({
   useEffect(() => {
     const controller = new AbortController();
     void Promise.all(
-      expanded.map(async (id) => {
-        try {
-          const cached = cache.peekTopics(id);
-          if (cached) setTopics((t) => ({ ...t, [id]: cached }));
-          const loaded = await cache.topics(id);
-          if (!controller.signal.aborted)
-            setTopics((t) => ({ ...t, [id]: loaded }));
-          setTopicError("");
-        } catch (e) {
-          if (!controller.signal.aborted) setTopicError(errorText(e));
-        }
-      }),
+      expanded
+        .filter(
+          (id) => channels.some((c) => c.stream_id === id) && !session?.locked,
+        )
+        .map(async (id) => {
+          try {
+            const cached = cache.peekTopics(id);
+            if (cached) setTopics((t) => ({ ...t, [id]: cached }));
+            const loaded = await cache.topics(id);
+            if (!controller.signal.aborted)
+              setTopics((t) => ({ ...t, [id]: loaded }));
+            setTopicError("");
+          } catch (e) {
+            if (!controller.signal.aborted) setTopicError(errorText(e));
+          }
+        }),
     );
     return () => controller.abort();
     // The stable key avoids refetching on unrelated renders.
@@ -439,22 +596,101 @@ const Workspace = memo(function Workspace({
                     )}
                     {topics[channel.stream_id]
                       ?.slice(0, topicLimits[channel.stream_id] || 20)
-                      .map((topic) => (
-                        <button
-                          key={topic.name}
-                          className={`topic ${view.type === "channel" && view.channelId === channel.stream_id && view.topic === topic.name ? "active" : ""}`}
-                          onClick={() =>
-                            select({
-                              type: "channel",
-                              channelId: channel.stream_id,
-                              topic: topic.name,
-                            })
-                          }
-                        >
-                          <span>↳</span>
-                          {topic.name || "(no topic)"}
-                        </button>
-                      ))}
+                      .map((topic) => {
+                        const key = topicKey(channel.stream_id, topic.name),
+                          mute = threadMutes[key];
+                        const muted =
+                          !!mute ||
+                          serverMutesTopic(
+                            session,
+                            channel.stream_id,
+                            topic.name,
+                          );
+                        const unread = muted
+                          ? 0
+                          : session?.topicUnreads[key] || 0;
+                        const label = topic.name || "(no topic)";
+                        const openMenu = (
+                          trigger: HTMLElement,
+                          x?: number,
+                          y?: number,
+                        ) => {
+                          const r = trigger.getBoundingClientRect();
+                          setTopicMenu({
+                            channelId: channel.stream_id,
+                            topic: topic.name,
+                            trigger,
+                            x: x ?? r.left,
+                            y: y ?? r.bottom,
+                          });
+                        };
+                        return (
+                          <div
+                            key={topic.name}
+                            className={`topic-row ${muted ? "muted" : ""} ${unread ? "unread" : ""}`}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              openMenu(
+                                e.currentTarget.querySelector("button")!,
+                                e.clientX,
+                                e.clientY,
+                              );
+                            }}
+                          >
+                            <button
+                              className={`topic ${view.type === "channel" && view.channelId === channel.stream_id && view.topic === topic.name ? "active" : ""}`}
+                              aria-label={`${label}${muted ? ", muted" : ""}${unread ? `, ${unread} unread` : ""}`}
+                              title={
+                                mute
+                                  ? mute.until === null
+                                    ? "Muted until you unmute"
+                                    : `Muted until ${new Date(mute.until).toLocaleString()}`
+                                  : muted
+                                    ? "Muted in Zulip"
+                                    : label
+                              }
+                              onKeyDown={(e) => {
+                                if (
+                                  e.key === "ContextMenu" ||
+                                  (e.shiftKey && e.key === "F10")
+                                ) {
+                                  e.preventDefault();
+                                  openMenu(e.currentTarget);
+                                }
+                              }}
+                              onClick={() =>
+                                select({
+                                  type: "channel",
+                                  channelId: channel.stream_id,
+                                  topic: topic.name,
+                                })
+                              }
+                            >
+                              <span aria-hidden="true">↳</span>
+                              <span className="topic-name">{label}</span>
+                              {muted && (
+                                <BellOff size={12} aria-hidden="true" />
+                              )}
+                              {unread > 0 && (
+                                <span
+                                  className="thread-badge"
+                                  aria-hidden="true"
+                                >
+                                  {unread > 99 ? "99+" : unread}
+                                </span>
+                              )}
+                            </button>
+                            <button
+                              className="topic-options"
+                              aria-label={`Thread options: ${label}`}
+                              aria-haspopup="menu"
+                              onClick={(e) => openMenu(e.currentTarget)}
+                            >
+                              <MoreHorizontal size={16} />
+                            </button>
+                          </div>
+                        );
+                      })}
                     {(topics[channel.stream_id]?.length || 0) >
                       (topicLimits[channel.stream_id] || 20) && (
                       <button
@@ -490,6 +726,11 @@ const Workspace = memo(function Workspace({
           {session && channels.length === 0 && (
             <p className="nav-empty">
               No subscribed channels yet. Subscribe in Zulip to see them here.
+            </p>
+          )}
+          {session?.unreadIncomplete && (
+            <p className="nav-empty">
+              Unread counts cover recent messages only.
             </p>
           )}
           {topicError && <p className="error">{topicError}</p>}
@@ -613,18 +854,44 @@ const Workspace = memo(function Workspace({
               " — Remove this organization and add it again."}
           </div>
         )}
-        <Conversation
-          key={JSON.stringify(view)}
-          account={account}
-          view={view}
-          title={title}
-          users={users}
-          privateChannel={!!selectedChannel?.invite_only}
-          onSelect={select}
-        />
+        {session?.locked ? (
+          <div className="empty-state" role="alert">
+            This session is locked. Remove the organization and sign in again.
+          </div>
+        ) : !session?.ready ? (
+          <div className="empty-state" role="status">
+            Connecting securely…
+          </div>
+        ) : (
+          <Conversation
+            key={JSON.stringify(view)}
+            account={account}
+            view={view}
+            title={title}
+            users={users}
+            recentConversations={session.recentConversations}
+            privateChannel={!!selectedChannel?.invite_only}
+            onSelect={select}
+          />
+        )}
       </main>
+      {topicMenu && !session?.locked && (
+        <TopicMenu
+          account={account}
+          target={topicMenu}
+          muted={!!threadMutes[topicKey(topicMenu.channelId, topicMenu.topic)]}
+          onOpen={() =>
+            select({
+              type: "channel",
+              channelId: topicMenu.channelId,
+              topic: topicMenu.topic,
+            })
+          }
+          onClose={closeTopicMenu}
+        />
+      )}
       {appearance && <Appearance onClose={() => setAppearance(false)} />}
-      {showMembers && (
+      {showMembers && !session?.locked && (
         <aside className="members">
           <header>
             THE PEOPLE <span>{members.length}</span>
@@ -651,6 +918,7 @@ const Conversation = memo(function Conversation({
   title,
   users,
   privateChannel,
+  recentConversations,
   onSelect,
 }: {
   account: Account;
@@ -658,6 +926,7 @@ const Conversation = memo(function Conversation({
   title: string;
   users: User[];
   privateChannel: boolean;
+  recentConversations: RecentConversation[];
   onSelect: (view: View) => void;
 }) {
   const {
@@ -734,7 +1003,10 @@ const Conversation = memo(function Conversation({
       setOlderBusy(false);
     }
   }
-  const dms = new Map<string, { ids: number[]; message: Message }>();
+  const dms = new Map<
+    string,
+    { ids: number[]; message?: Message; maxId: number }
+  >();
   if (view.type === "home")
     for (const message of [...messages].reverse()) {
       if (!Array.isArray(message.display_recipient)) continue;
@@ -744,7 +1016,17 @@ const Conversation = memo(function Conversation({
         .sort((a, b) => a - b);
       const ids = others.length ? others : [account.userId],
         key = ids.join(",");
-      if (!dms.has(key)) dms.set(key, { ids, message });
+      if (!dms.has(key)) dms.set(key, { ids, message, maxId: message.id });
+    }
+  if (view.type === "home")
+    for (const conversation of recentConversations) {
+      const ids = conversation.user_ids.length
+        ? [...conversation.user_ids].sort((a, b) => a - b)
+        : [account.userId];
+      if (ids.some((id) => id !== account.userId && !userMap.has(id))) continue;
+      const key = ids.join(",");
+      if (!dms.has(key))
+        dms.set(key, { ids, maxId: conversation.max_message_id });
     }
   return (
     <>
@@ -869,36 +1151,42 @@ const Conversation = memo(function Conversation({
             )}
             {view.type === "home" ? (
               <div className="dm-list">
-                {[...dms].map(([key, { ids, message }]) => {
-                  const name = ids
-                    .map((id) => userMap.get(id)?.full_name || "Unknown user")
-                    .join(", ");
-                  return (
-                    <button
-                      className="dm-card"
-                      key={key}
-                      onClick={() => onSelect({ type: "dm", userIds: ids })}
-                    >
-                      <Avatar
-                        name={name}
-                        org={account.url}
-                        url={userMap.get(ids[0])?.avatar_url}
-                      />
-                      <span>
-                        <strong>{name}</strong>
-                        <small>
-                          Last message from {message.sender_full_name}
-                        </small>
-                      </span>
-                      <time>
-                        {new Date(
-                          message.timestamp * 1000,
-                        ).toLocaleDateString()}
-                      </time>
-                      <ChevronRight size={18} />
-                    </button>
-                  );
-                })}
+                {[...dms]
+                  .sort((a, b) => b[1].maxId - a[1].maxId)
+                  .map(([key, { ids, message }]) => {
+                    const name = ids
+                      .map((id) => userMap.get(id)?.full_name || "Unknown user")
+                      .join(", ");
+                    return (
+                      <button
+                        className="dm-card"
+                        key={key}
+                        onClick={() => onSelect({ type: "dm", userIds: ids })}
+                      >
+                        <Avatar
+                          name={name}
+                          org={account.url}
+                          url={userMap.get(ids[0])?.avatar_url}
+                        />
+                        <span>
+                          <strong>{name}</strong>
+                          <small>
+                            {message
+                              ? `Last message from ${message.sender_full_name}`
+                              : "Open conversation"}
+                          </small>
+                        </span>
+                        <time>
+                          {message
+                            ? new Date(
+                                message.timestamp * 1000,
+                              ).toLocaleDateString()
+                            : ""}
+                        </time>
+                        <ChevronRight size={18} />
+                      </button>
+                    );
+                  })}
               </div>
             ) : (
               messages.map((message, index) => (

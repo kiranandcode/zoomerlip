@@ -1,9 +1,11 @@
 import type { Account, View } from "./types";
+export { readAccounts } from "./accountStorage";
 export class ApiError extends Error {
   constructor(
     message: string,
     public code = "",
     public status = 0,
+    public retryAfterMs = 0,
   ) {
     super(message);
   }
@@ -31,12 +33,33 @@ export function normalizeOrg(input: string): string {
 export function basicAuth(email: string, key: string) {
   return `Basic ${btoa(String.fromCharCode(...new TextEncoder().encode(`${email}:${key}`)))}`;
 }
+const featureLevels = new Map<string, number>();
+const cooldowns = new Map<string, number>();
+export const getFeatureLevel = (org: string) => featureLevels.get(org) ?? 177;
+export function pause(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const abort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
 export async function request<T>(
   account: Pick<Account, "url" | "email" | "apiKey">,
   path: string,
   params: Record<string, unknown> = {},
   method = "GET",
   signal?: AbortSignal,
+  timeoutMs = 30000,
 ): Promise<T> {
   const body = new URLSearchParams();
   for (const [key, value] of Object.entries(params))
@@ -45,35 +68,96 @@ export async function request<T>(
         key,
         typeof value === "object" ? JSON.stringify(value) : String(value),
       );
-  const response = await fetch(
-    `${account.url}/api/v1${path}${method === "GET" && body.size ? `?${body}` : ""}`,
-    {
-      method,
-      signal,
-      credentials: "omit",
-      redirect: "error",
-      headers: account.apiKey
-        ? { Authorization: basicAuth(account.email, account.apiKey) }
-        : {},
-      ...(method !== "GET" ? { body } : {}),
-    },
-  );
-  const data = await response.json().catch(() => {
-    throw new ApiError(
-      `Server returned ${response.status}; check the organization URL.`,
-      "",
-      response.status,
+  const query = body.toString();
+  for (let attempt = 0; ; attempt++) {
+    const wait = (cooldowns.get(account.url) || 0) - Date.now();
+    if (wait > 0) await pause(wait, signal);
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    const control = new AbortController();
+    const abort = () => control.abort(signal?.reason);
+    signal?.addEventListener("abort", abort, { once: true });
+    const timer = setTimeout(
+      () =>
+        control.abort(new DOMException("Request timed out", "TimeoutError")),
+      timeoutMs,
     );
-  });
-  if (!response.ok || data.result === "error")
-    throw new ApiError(
-      data.msg || `Request failed (${response.status})`,
-      data.code,
-      response.status,
-    );
-  return data as T;
+    let response: Response;
+    let data: any;
+    try {
+      response = await fetch(
+        `${account.url}/api/v1${path}${method === "GET" && query ? `?${query}` : ""}`,
+        {
+          method,
+          signal: control.signal,
+          credentials: "omit",
+          redirect: "error",
+          headers: account.apiKey
+            ? { Authorization: basicAuth(account.email, account.apiKey) }
+            : {},
+          ...(method !== "GET" ? { body } : {}),
+        },
+      );
+      if (
+        response.status === 401 &&
+        account.apiKey &&
+        typeof window !== "undefined"
+      )
+        window.dispatchEvent(
+          new CustomEvent("zoomerlip-auth-failed", {
+            detail: {
+              url: account.url,
+              email: account.email,
+              apiKey: account.apiKey,
+            },
+          }),
+        );
+      data = await response.json().catch(() => {
+        throw new ApiError(
+          `Server returned ${response.status}; check the organization URL.`,
+          "",
+          response.status,
+        );
+      });
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+    }
+    if (response.status === 429) {
+      const header = response.headers.get("Retry-After");
+      const seconds =
+        header && /^\d+(?:\.\d+)?$/.test(header)
+          ? Number(header)
+          : Number(data.retry_after);
+      const retryAfter =
+        Number.isFinite(seconds) && seconds >= 0
+          ? seconds * 1000
+          : header
+            ? Math.max(0, Date.parse(header) - Date.now()) || 1000
+            : 1000;
+      cooldowns.set(account.url, Date.now() + retryAfter);
+      if (method === "GET" && attempt < 1) continue;
+      throw new ApiError(
+        data.msg || "Rate limited. Retry after the server cooldown.",
+        data.code,
+        429,
+        retryAfter,
+      );
+    }
+    if (!response.ok || data.result === "error")
+      throw new ApiError(
+        data.msg || `Request failed (${response.status})`,
+        data.code,
+        response.status,
+      );
+    if (path === "/register" && typeof data.zulip_feature_level === "number")
+      featureLevels.set(account.url, data.zulip_feature_level);
+    return data as T;
+  }
 }
-export function narrow(view: View): {
+export function narrow(
+  view: View,
+  featureLevel = 177,
+): {
   operator: string;
   operand: string | number | number[];
   negated?: boolean;
@@ -82,12 +166,26 @@ export function narrow(view: View): {
     return [
       { operator: "sender", operand: view.userId },
       ...(view.posts === "channels"
-        ? [{ operator: "is", operand: "private", negated: true }]
+        ? [
+            {
+              operator: "is",
+              operand: featureLevel >= 177 ? "dm" : "private",
+              negated: true,
+            },
+          ]
         : []),
     ];
-  if (view.type === "home") return [{ operator: "is", operand: "private" }];
+  if (view.type === "home")
+    return [
+      { operator: "is", operand: featureLevel >= 177 ? "dm" : "private" },
+    ];
   if (view.type === "dm")
-    return [{ operator: "pm-with", operand: view.userIds }];
+    return [
+      {
+        operator: featureLevel >= 177 ? "dm" : "pm-with",
+        operand: view.userIds,
+      },
+    ];
   return [
     { operator: "stream", operand: view.channelId },
     ...(view.topic !== undefined
@@ -100,6 +198,7 @@ export async function login(
   email: string,
   secret: string,
   useKey: boolean,
+  signal?: AbortSignal,
 ): Promise<Account> {
   const base = {
     url: normalizeOrg(url),
@@ -112,6 +211,7 @@ export async function login(
       "/fetch_api_key",
       { username: base.email, password: secret },
       "POST",
+      signal,
     );
     base.apiKey = result.api_key;
     base.email = result.email;
@@ -119,6 +219,9 @@ export async function login(
   const me = await request<{ user_id: number; full_name: string }>(
     base,
     "/users/me",
+    {},
+    "GET",
+    signal,
   );
   return {
     ...base,
@@ -127,26 +230,55 @@ export async function login(
     userId: me.user_id,
   };
 }
-const storageKey = "zoomerlip.accounts.v1";
-export function readAccounts(): Account[] {
-  try {
-    const saved: unknown = JSON.parse(localStorage.getItem(storageKey) || "[]");
-    return Array.isArray(saved)
-      ? saved.filter(
-          (a): a is Account =>
-            a &&
-            typeof a.id === "string" &&
-            typeof a.email === "string" &&
-            typeof a.apiKey === "string" &&
-            typeof a.name === "string" &&
-            Number.isInteger(a.userId) &&
-            normalizeOrg(a.url) === a.url,
-        )
-      : [];
-  } catch {
-    return [];
+
+export async function markThreadRead(
+  account: Account,
+  streamId: number,
+  topic: string,
+  signal: AbortSignal,
+) {
+  if (getFeatureLevel(account.url) < 155) {
+    await request(
+      account,
+      "/mark_topic_as_read",
+      { stream_id: streamId, topic_name: topic },
+      "POST",
+      signal,
+    );
+    return;
   }
-}
-export function saveAccounts(accounts: Account[]) {
-  localStorage.setItem(storageKey, JSON.stringify(accounts));
+  let anchor: string | number = "newest";
+  while (!signal.aborted) {
+    const page: { found_oldest: boolean; first_processed_id: number | null } =
+      await request<{
+        found_oldest: boolean;
+        first_processed_id: number | null;
+      }>(
+        account,
+        "/messages/flags/narrow",
+        {
+          anchor,
+          include_anchor: anchor === "newest",
+          num_before: 1000,
+          num_after: 0,
+          narrow: [
+            ...narrow(
+              { type: "channel", channelId: streamId, topic },
+              getFeatureLevel(account.url),
+            ),
+            { operator: "is", operand: "unread" },
+          ],
+          op: "add",
+          flag: "read",
+        },
+        "POST",
+        signal,
+      );
+    if (page.found_oldest || page.first_processed_id === null) return;
+    if (page.first_processed_id === anchor)
+      throw new Error(
+        "The server did not advance through unread messages. Try again.",
+      );
+    anchor = page.first_processed_id;
+  }
 }

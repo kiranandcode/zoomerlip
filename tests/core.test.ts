@@ -137,7 +137,7 @@ describe("message safety", () => {
       { operator: "topic", operand: "a & b" },
     ]);
     expect(narrow({ type: "dm", userIds: [2, 3] })).toEqual([
-      { operator: "pm-with", operand: [2, 3] },
+      { operator: "dm", operand: [2, 3] },
     ]);
   });
 });

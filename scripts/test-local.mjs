@@ -84,10 +84,13 @@ try {
   );
   await page.getByRole("button", { name: "general", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "↳ show & tell", exact: true }),
+    page
+      .locator(".topics")
+      .getByRole("button", { name: /^show & tell(?:,|$)/ }),
   ).toBeVisible({ timeout: 10000 });
   await page
-    .getByRole("button", { name: "↳ show & tell", exact: true })
+    .locator(".topics")
+    .getByRole("button", { name: /^show & tell(?:,|$)/ })
     .click();
   await expect(
     page
@@ -106,6 +109,33 @@ try {
     timeout: 15000,
   });
   console.log("PASS channel/topic history and sending");
+  const thread = page
+    .locator(".topics")
+    .getByRole("button", { name: /^show & tell(?:,|$)/ });
+  await thread.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "1 hour", exact: true }).click();
+  await expect(thread).toHaveAccessibleName("show & tell, muted");
+  await thread.focus();
+  await page.keyboard.press("Shift+F10");
+  await expect(
+    page.getByRole("menu", { name: "Thread options: show & tell" }),
+  ).toBeVisible();
+  await page
+    .getByRole("menuitem", { name: "Unmute thread", exact: true })
+    .click();
+  await expect(thread).not.toHaveAccessibleName(/muted/);
+  await page
+    .getByRole("button", { name: "Thread options: show & tell", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Mark thread read", exact: true })
+    .click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(thread).toHaveAccessibleName("show & tell");
+  console.log(
+    "PASS thread right-click, keyboard menu, timed mute, unmute and mark read",
+  );
+
   const incoming = `Live incoming ${Date.now()}`;
   await api(
     "/messages",

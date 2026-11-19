@@ -1,10 +1,10 @@
 // Isolated browser fixture. All Zulip requests are intercepted; no real org is contacted.
 import { chromium, expect } from "@playwright/test";
-const url = process.env.ZOOMERLIP_TEST_URL || "http://127.0.0.1:4174";
+const url = process.env.ZOOMERLIP_TEST_URL || "http://127.0.0.1:4173";
 if (!["127.0.0.1", "localhost"].includes(new URL(url).hostname))
   throw new Error("Local client only.");
 const account = {
-  id: "fixture",
+  id: "https://fixture.zulip.test|1",
   url: "https://fixture.zulip.test",
   email: "fixture@test.invalid",
   apiKey: "synthetic",
@@ -24,16 +24,19 @@ const messages = Array.from({ length: 300 }, (_, i) => ({
   display_recipient: "private-room",
   reactions: [],
 }));
-const browser = await chromium.launch({ channel: "chrome", headless: true });
+const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--disable-gpu"] });
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1000 },
 });
+context.setDefaultTimeout(10000);
 const page = await context.newPage();
-const errors = [];
+const errors = [],
+  blocked = [];
 page.on("pageerror", (e) => errors.push(e.message));
 let edits = 0,
   eventCalls = 0;
 await context.addInitScript((a) => {
+  if (!["127.0.0.1", "localhost"].includes(location.hostname)) return;
   localStorage.setItem("zoomerlip.accounts.v1", JSON.stringify([a]));
   window.dateFormats = 0;
   for (const name of ["toLocaleTimeString", "toLocaleDateString"]) {
@@ -44,6 +47,12 @@ await context.addInitScript((a) => {
     };
   }
 }, account);
+await context.route("**/*", (route) => {
+  if (new URL(route.request().url()).origin === new URL(url).origin)
+    return route.continue();
+  blocked.push(route.request().url());
+  return route.abort();
+});
 await context.route("https://fixture.zulip.test/**", async (route) => {
   const request = route.request(),
     u = new URL(request.url()),
@@ -55,6 +64,15 @@ await context.route("https://fixture.zulip.test/**", async (route) => {
       queue_id: "fixture-queue",
       last_event_id: 0,
       realm_name: "Fixture",
+      unread_msgs: {
+        streams: [
+          {
+            stream_id: 1,
+            topic: "Thread",
+            unread_message_ids: [298, 299, 300],
+          },
+        ],
+      },
       subscriptions: [
         {
           stream_id: 1,
@@ -101,7 +119,7 @@ await context.route("https://fixture.zulip.test/**", async (route) => {
   });
 });
 try {
-  await page.goto(url);
+  await page.goto(url, { waitUntil: "domcontentloaded" });
   await page
     .getByRole("button", {
       name: "private-room (private channel)",
@@ -111,6 +129,62 @@ try {
   await expect(page.locator(".message")).toHaveCount(300);
   await expect(page.locator(".compose-audience")).toContainText(
     "Private channel · members only",
+  );
+  const topicRow = page
+    .locator(".topic-row")
+    .filter({ has: page.locator(".topic-name", { hasText: /^Thread$/ }) });
+  const topic = topicRow.locator("button.topic");
+  await expect(topic).toHaveAccessibleName("Thread, 3 unread");
+  await expect(topicRow.locator(".thread-badge")).toHaveText("3");
+  await topic.click({ button: "right" });
+  await expect(
+    page.getByRole("menu", { name: "Thread options: Thread", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Open thread", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(topic).toBeFocused();
+  await topic.press("Shift+F10");
+  await page.getByRole("menuitem", { name: "15 minutes", exact: true }).click();
+  await expect(topicRow).toHaveClass(/muted/);
+  await expect(topic).toHaveAccessibleName("Thread, muted");
+  await expect(topicRow.locator(".thread-badge")).toHaveCount(0);
+  const storedMute = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) =>
+      k.startsWith("zoomerlip.thread.v1."),
+    );
+    return key
+      ? { key, value: JSON.parse(localStorage.getItem(key)), now: Date.now() }
+      : null;
+  });
+  expect(storedMute).not.toBeNull();
+  expect(storedMute.value.until - storedMute.now).toBeGreaterThan(14 * 60000);
+  expect(storedMute.value.until - storedMute.now).toBeLessThanOrEqual(
+    15 * 60000,
+  );
+  const activeHeader = await page
+    .locator(".conversation-header strong")
+    .textContent();
+  await page.evaluate((key) => {
+    const value = JSON.stringify({ until: Date.now() + 350 });
+    localStorage.setItem(key, value);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key,
+        newValue: value,
+        storageArea: localStorage,
+      }),
+    );
+  }, storedMute.key);
+  await expect(topicRow).not.toHaveClass(/muted/);
+  await expect(topic).toHaveAccessibleName("Thread, 3 unread");
+  await expect(topicRow.locator(".thread-badge")).toHaveText("3");
+  await expect(page.locator(".conversation-header strong")).toHaveText(
+    activeHeader,
+  );
+  console.log(
+    "PASS thread-menu focus, timed mute persistence and automatic expiry restoring unread badges.",
   );
   const initial = await page.evaluate(() => window.dateFormats);
   await page
@@ -233,8 +307,9 @@ try {
   });
   expect(contrastFailures).toEqual([]);
   expect(errors).toEqual([]);
+  expect(blocked).toEqual([]);
   console.log(
-    "PASS 300-row typing isolation; keyboard message/emoji/member navigation; focus retention; no-op edits; audience labels; native dialog and mobile drawer dismissal.",
+    "PASS 300-row typing isolation; keyboard message/emoji/member navigation; focus retention; no-op edits; audience labels; native dialog and mobile drawer dismissal; late sends; 12 theme/accent contrast combinations; thread menu keyboard/right-click, timed mute expiry and unread restoration; no external requests.",
   );
 } finally {
   await browser.close();

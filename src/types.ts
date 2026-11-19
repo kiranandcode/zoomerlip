@@ -13,6 +13,7 @@ export type User = {
   avatar_url?: string;
   is_active: boolean;
   is_bot: boolean;
+  role?: number;
   date_joined?: string;
   timezone?: string;
   profile_data?: Record<string, { value: string; rendered_value?: string }>;
@@ -23,6 +24,7 @@ export type Channel = {
   description: string;
   color?: string;
   invite_only?: boolean;
+  is_muted?: boolean;
 };
 export type Topic = { name: string; max_id: number };
 export type Reaction = {
@@ -58,3 +60,5 @@ export type ZulipEvent = {
   message?: Message;
   [key: string]: unknown;
 };
+
+export type RecentConversation = { user_ids: number[]; max_message_id: number };

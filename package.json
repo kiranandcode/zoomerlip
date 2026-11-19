@@ -12,7 +12,9 @@
     "format": "prettier --write src tests scripts/*.mjs *.json *.ts index.html README.md",
     "format:check": "prettier --check src tests scripts/*.mjs *.json *.ts index.html README.md",
     "test:scale": "node scripts/test-scale.mjs",
-    "test:themes": "node scripts/test-themes.mjs"
+    "test:themes": "node scripts/test-themes.mjs",
+    "test:ui": "node scripts/test-ui.mjs",
+    "test:safety": "node scripts/test-safety.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

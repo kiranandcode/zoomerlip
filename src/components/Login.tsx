@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ArrowRight, KeyRound, X } from "lucide-react";
 import { Appearance } from "./Appearance";
 import { login } from "../api";
@@ -7,9 +7,15 @@ export function Login({
   onLogin,
   onClose,
 }: {
-  onLogin: (account: Account) => void;
+  onLogin: (account: Account) => void | Promise<void>;
   onClose?: () => void;
 }) {
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => pending.current?.abort(), []);
+  const cancel = () => {
+    pending.current?.abort();
+    onClose?.();
+  };
   const [appearance, setAppearance] = useState(false);
   const [useKey, setUseKey] = useState(false),
     [url, setUrl] = useState(""),
@@ -57,18 +63,29 @@ export function Login({
           className="login-card"
           onSubmit={async (event) => {
             event.preventDefault();
+            pending.current?.abort();
+            const controller = new AbortController();
+            pending.current = controller;
             setBusy(true);
             setError("");
             try {
-              onLogin(await login(url, email, secret, useKey));
+              const account = await login(
+                url,
+                email,
+                secret,
+                useKey,
+                controller.signal,
+              );
+              if (!controller.signal.aborted) await onLogin(account);
             } catch (e) {
+              if (controller.signal.aborted) return;
               setError(
                 e instanceof TypeError
                   ? "Cannot reach this org. Check the URL, connection, and server CORS settings."
                   : (e as Error).message,
               );
             } finally {
-              setBusy(false);
+              if (!controller.signal.aborted) setBusy(false);
             }
           }}
         >
@@ -77,7 +94,7 @@ export function Login({
               type="button"
               className="close icon-button"
               aria-label="Close login"
-              onClick={onClose}
+              onClick={cancel}
             >
               <X size={20} />
             </button>
@@ -113,6 +130,8 @@ export function Login({
             <button
               type="button"
               className={!useKey ? "active" : ""}
+              aria-pressed={!useKey}
+              disabled={busy}
               onClick={() => {
                 setUseKey(false);
                 setSecret("");
@@ -123,6 +142,8 @@ export function Login({
             <button
               type="button"
               className={useKey ? "active" : ""}
+              aria-pressed={useKey}
+              disabled={busy}
               onClick={() => {
                 setUseKey(true);
                 setSecret("");

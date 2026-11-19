@@ -1,60 +1,68 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { getCache } from "./cache";
-import { ApiError, request } from "./api";
-import type { Account, Channel, User, ZulipEvent } from "./types";
-export type Session = {
-  channels: Channel[];
-  users: User[];
-  status: string;
-  error: string;
-  revision: number;
-  name: string;
-  unread: number;
-};
-const initial: Session = {
-  channels: [],
-  users: [],
-  status: "Connecting",
-  error: "",
-  revision: 0,
-  name: "",
-  unread: 0,
-};
-export function useSession(account: Account, active: boolean): Session {
-  const [state, setState] = useState<Session>(initial);
-  const activeRef = useRef(active);
-  activeRef.current = active;
+import { clearUploadCache } from "./uploads";
+import { ApiError, pause, request } from "./api";
+import { initialSession, SessionModel } from "./sessionModel";
+import type { Registration, Session } from "./sessionModel";
+import type { Account, ZulipEvent } from "./types";
+export type { Session } from "./sessionModel";
+export function useSession(account: Account, _active: boolean): Session {
+  const [state, setState] = useState<Session>(initialSession);
   useEffect(() => {
-    if (active) setState((s) => (s.unread ? { ...s, unread: 0 } : s));
-  }, [active]);
-  useEffect(() => {
-    const controller = new AbortController();
-    const signal = controller.signal;
+    const lifetime = new AbortController(),
+      signal = lifetime.signal,
+      cache = getCache(account),
+      model = new SessionModel();
     let queue = "",
       last = -1,
-      retry = 0;
-    const cache = getCache(account);
-    const pause = (ms: number) =>
-      new Promise<void>((resolve) => {
-        const finish = () => {
-          clearTimeout(t);
-          signal.removeEventListener("abort", finish);
-          resolve();
-        };
-        const t = setTimeout(finish, ms);
-        signal.addEventListener("abort", finish, { once: true });
-      });
+      retry = 0,
+      longpollMs = 90000,
+      poll: AbortController | undefined,
+      probe = true,
+      finished = false;
+    const status = (value: string, error = "") => {
+      model.state = { ...model.state, status: value, error };
+      setState(model.state);
+    };
+    const lock = (message: string) => {
+      cache.lock();
+      clearUploadCache(account.id);
+      model.state = {
+        ...initialSession,
+        status: "Sign in again",
+        error: message,
+        locked: true,
+      };
+      setState(model.state);
+      finished = true;
+      poll?.abort();
+    };
+    const authFailed = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (
+        d?.url === account.url &&
+        d?.email === account.email &&
+        d?.apiKey === account.apiKey
+      )
+        lock(
+          "Your credentials are no longer valid. Remove this organization and sign in again.",
+        );
+    };
+    const wake = () => {
+      if (document.visibilityState === "visible" && !finished) {
+        probe = true;
+        poll?.abort();
+      }
+    };
+    window.addEventListener("zoomerlip-auth-failed", authFailed);
+    window.addEventListener("online", wake);
+    document.addEventListener("visibilitychange", wake);
     async function run() {
-      while (!signal.aborted) {
+      while (!signal.aborted && !finished) {
         try {
           if (!queue) {
-            const data = await request<{
-              queue_id: string;
-              last_event_id: number;
-              subscriptions: Channel[];
-              realm_users: User[];
-              realm_name: string;
-            }>(
+            const previous = model.state.channels.map((c) => c.stream_id);
+            const data = await request<Registration>(
               account,
               "/register",
               {
@@ -64,127 +72,142 @@ export function useSession(account: Account, active: boolean): Session {
                   "delete_message",
                   "reaction",
                   "subscription",
+                  "stream",
                   "realm_user",
                   "realm",
                   "update_message_flags",
+                  "muted_users",
+                  "user_topic",
                 ],
-                fetch_event_types: ["subscription", "realm_user", "realm"],
+                fetch_event_types: [
+                  "subscription",
+                  "realm_user",
+                  "realm",
+                  "muted_users",
+                  "user_topic",
+                  "recent_private_conversations",
+                  "message",
+                  "update_message_flags",
+                ],
                 apply_markdown: true,
                 client_gravatar: false,
               },
               "POST",
               signal,
             );
+            if (signal.aborted || finished) break;
             queue = data.queue_id;
             last = data.last_event_id;
+            longpollMs =
+              typeof data.event_queue_longpoll_timeout_seconds === "number"
+                ? Math.max(
+                    1000,
+                    data.event_queue_longpoll_timeout_seconds * 1000,
+                  )
+                : 90000;
+            model.register(data, account.name);
+            cache.unlock();
+            cache.purgeStreams(
+              previous.filter(
+                (id) => !model.state.channels.some((c) => c.stream_id === id),
+              ),
+            );
+            cache.allowStreams(model.state.channels.map((c) => c.stream_id));
+            cache.setMutedUsers(model.state.mutedUsers);
             cache.invalidate();
-            setState((s) => ({
-              ...s,
-              channels: data.subscriptions || [],
-              users: (data.realm_users || []).map((user) => ({
-                ...user,
-                is_active: true,
-              })),
-              name: data.realm_name || account.name,
-              revision: s.revision + 1,
-            }));
+            setState(model.state);
+            probe = true;
           }
-          setState((s) =>
-            s.status === "Live" && !s.error
-              ? s
-              : { ...s, status: "Live", error: "" },
-          );
-          const data = await request<{ events: ZulipEvent[] }>(
-            account,
-            "/events",
-            { queue_id: queue, last_event_id: last, dont_block: false },
-            "GET",
-            signal,
-          );
+          poll = new AbortController();
+          const abort = () => poll?.abort();
+          signal.addEventListener("abort", abort, { once: true });
+          let data: { events: ZulipEvent[] };
+          try {
+            data = await request(
+              account,
+              "/events",
+              { queue_id: queue, last_event_id: last, dont_block: probe },
+              "GET",
+              poll.signal,
+              longpollMs,
+            );
+          } finally {
+            signal.removeEventListener("abort", abort);
+            poll = undefined;
+          }
+          if (signal.aborted || finished) break;
+          probe = false;
           retry = 0;
-          cache.events(
-            data.events.filter(
-              (event) => event.id > last && event.type !== "heartbeat",
+          const events = data.events.filter((e) => e.id > last);
+          const previous = model.state.channels.map((c) => c.stream_id);
+          const next = model.apply(events, account.userId);
+          cache.purgeStreams(
+            previous.filter(
+              (id) => !next.channels.some((c) => c.stream_id === id),
             ),
           );
-          for (const event of data.events) {
-            if (event.id <= last) continue;
-            if (event.type === "heartbeat") {
-              last = event.id;
-              continue;
-            }
-            if (
-              event.type === "subscription" ||
-              event.type === "realm_user" ||
-              event.type === "realm"
-            ) {
-              const [channels, users] = await Promise.all([
-                request<{ subscriptions: Channel[] }>(
-                  account,
-                  "/users/me/subscriptions",
-                  {},
-                  "GET",
-                  signal,
-                ),
-                request<{ members: User[] }>(
-                  account,
-                  "/users",
-                  {},
-                  "GET",
-                  signal,
-                ),
-              ]);
-              setState((s) => ({
-                ...s,
-                channels: channels.subscriptions,
-                users: users.members,
-              }));
-            }
-            if (
-              event.type === "message" &&
-              !activeRef.current &&
-              event.message?.sender_id !== account.userId
-            )
-              setState((s) => ({ ...s, unread: s.unread + 1 }));
-            last = event.id;
-          }
-        } catch (error) {
-          if (signal.aborted) break;
-          const message =
-            error instanceof Error ? error.message : "Connection failed";
+          cache.allowStreams(next.channels.map((c) => c.stream_id));
+          cache.setMutedUsers(next.mutedUsers);
+          cache.events(events.filter((e) => e.type !== "heartbeat"));
+          if (events.length) last = events.at(-1)!.id;
           if (
-            error instanceof ApiError &&
-            error.code === "BAD_EVENT_QUEUE_ID"
-          ) {
-            queue = "";
-            continue;
-          }
-          if (error instanceof ApiError && error.status === 401) {
-            setState((s) => ({
-              ...s,
-              status: "Sign in again",
-              error: message,
-            }));
+            next.status !== "Live" ||
+            next.error ||
+            events.some((e) => e.type !== "heartbeat")
+          )
+            status("Live");
+        } catch (e) {
+          if (signal.aborted || finished) break;
+          if (e instanceof ApiError && e.status === 401) {
+            lock(e.message);
             break;
           }
-          setState((s) => ({ ...s, status: "Reconnecting", error: message }));
-          await pause(Math.min(30000, 1000 * 2 ** Math.min(retry++, 5)));
+          if (e instanceof DOMException && e.name === "AbortError" && probe)
+            continue;
+          if (e instanceof ApiError && e.code === "BAD_EVENT_QUEUE_ID")
+            queue = "";
+          probe = true;
+          status(
+            "Reconnecting",
+            e instanceof Error ? e.message : "Connection failed",
+          );
+          try {
+            await pause(
+              Math.max(
+                e instanceof ApiError ? e.retryAfterMs : 0,
+                Math.min(30000, 1000 * 2 ** Math.min(retry++, 5)),
+              ),
+              signal,
+            );
+          } catch {
+            break;
+          }
         }
       }
     }
     void run();
     return () => {
-      controller.abort();
+      finished = true;
+      lifetime.abort();
+      poll?.abort();
+      window.removeEventListener("zoomerlip-auth-failed", authFailed);
+      window.removeEventListener("online", wake);
+      document.removeEventListener("visibilitychange", wake);
       if (queue)
-        void request(account, "/events", { queue_id: queue }, "DELETE").catch(
-          () => {},
-        );
+        void request(
+          account,
+          "/events",
+          { queue_id: queue },
+          "DELETE",
+          undefined,
+          5000,
+        ).catch(() => {});
     };
   }, [
     account.id,
     account.apiKey,
-    account.email,
     account.url,
+    account.email,
     account.name,
     account.userId,
   ]);

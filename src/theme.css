@@ -1547,3 +1547,113 @@ button:hover {
     min-width: 32px;
   }
 }
+
+.topic-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: 5px;
+}
+.topic-row .topic {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.topic-row .topic-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topic-row.unread .topic {
+  color: var(--text);
+  font-weight: 700;
+}
+.topic-row.muted .topic {
+  color: var(--muted);
+  font-weight: 400;
+}
+.topic-row.muted:not(:hover):not(:focus-within) {
+  background: transparent;
+}
+.thread-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  border-radius: 8px;
+  padding: 1px 5px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 11px;
+}
+.topic-options {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  min-height: 28px;
+  flex-shrink: 0;
+  color: var(--muted);
+  border-radius: 4px;
+  opacity: 0;
+}
+.topic-row:hover .topic-options,
+.topic-row:focus-within .topic-options {
+  opacity: 1;
+}
+.topic-options:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.topic-context-menu {
+  position: fixed;
+  z-index: 130;
+  width: 240px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  padding: 8px;
+  background: var(--field);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px #0007;
+}
+.topic-context-menu strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 8px;
+}
+.topic-context-menu button {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  text-align: left;
+  font-size: 13px;
+}
+.topic-context-menu button:hover,
+.topic-context-menu button:focus-visible {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.topic-context-menu .menu-section {
+  display: block;
+  padding: 10px 8px 4px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.topic-context-menu p {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+@media (hover: none), (pointer: coarse) {
+  .topic-options {
+    opacity: 1;
+    min-width: 36px;
+    min-height: 36px;
+  }
+}
