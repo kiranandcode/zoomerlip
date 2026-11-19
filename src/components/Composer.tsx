@@ -1,3 +1,4 @@
+import { quoteMessage } from "../messaging/actions";
 import { useCompletion } from "../messaging/useCompletion";
 import { Formatting } from "../messaging/Formatting";
 import { useAttachments } from "../messaging/useAttachments";
@@ -27,6 +28,7 @@ import { sendsOnEnter, touchPrimary } from "../composerKeys";
 import type { Account, Message, View, User } from "../types";
 export type ComposerHandle = {
   reply: (message: Message) => void;
+  quote: (message: Message, raw: string) => void;
   focus: () => void;
 };
 type ChatView = Extract<View, { type: "channel" | "dm" }>;
@@ -172,6 +174,15 @@ export const Composer = memo(
       ref,
       () => ({
         focus: () => input.current?.focus(),
+        quote: (message, raw) => {
+          const next = `${saved.text}${saved.text ? "\n" : ""}${quoteMessage(account, message, raw)}`;
+          const targetTopic =
+            view.type === "channel" && !view.topic ? message.subject : topic;
+          setText(next);
+          setTopic(targetTopic);
+          persist(next, targetTopic);
+          input.current?.focus();
+        },
         reply: (message) => {
           setText((current) => {
             const next = `${current}${current ? "\n" : ""}@_**${message.sender_full_name}|${message.sender_id}** `;

@@ -1,3 +1,4 @@
+import { MessageActions } from "../messaging/MessageActions";
 import {
   memo,
   useEffect,
@@ -49,6 +50,8 @@ export const MessageRow = memo(function MessageRow({
   onFocus,
   onSelect,
   onReply,
+  onQuote,
+  canDelete = false,
   onError,
 }: {
   account: Account;
@@ -59,6 +62,8 @@ export const MessageRow = memo(function MessageRow({
   onFocus: (id: number) => void;
   onSelect: (view: View) => void;
   onReply: (message: Message) => void;
+  onQuote: (message: Message, raw: string) => void;
+  canDelete?: boolean;
   onError: (error: string) => void;
 }) {
   const [picker, setPicker] = useState(false),
@@ -333,6 +338,13 @@ export const MessageRow = memo(function MessageRow({
               account={account}
             />
           )}
+          <MessageActions
+            account={account}
+            message={message}
+            canDelete={canDelete || message.sender_id === account.userId}
+            onQuote={onQuote}
+            onError={onError}
+          />
           {!!reactions.size && (
             <div className="reactions">
               {[...reactions].map(([key, group]) => (

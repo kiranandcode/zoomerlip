@@ -27,3 +27,11 @@ References: [upload API](https://zulip.com/api/upload-file), [upstream upload im
 Attachment commit: `e6db91b`. Added cursor-aware mention and emoji autocomplete, bounded suggestions, stable user-ID mentions and active organization emoji. Arrow keys, Enter/Tab and Escape control a labelled listbox; composition events and keyCode 229 preserve IME behavior. Existing mobile Enter behavior is retained. Formatting operates on the selected range. Explicit preview calls Zulip's renderer and passes results through the existing MessageContent sanitizer; edits abort stale previews.
 
 References: [render API](https://zulip.com/api/render-message), [custom emoji](https://zulip.com/api/get-custom-emoji), [upstream rendering](https://github.com/zulip/zulip/blob/main/zerver/views/message_send.py), [upstream emoji](https://github.com/zulip/zulip/blob/main/zerver/views/realm_emoji.py). Checks: 134 unit tests and production build passed. Browser checks follow after remaining UI slices.
+
+Composition commit: `c72f4a4`.
+
+## Slice 4: message actions
+
+Confirmed permanent deletion, server permission errors, star/unstar, mark unread, sanitized edit history, permanent links with a selectable clipboard fallback, and raw-Markdown quote replies. Existing edit/reaction paths remain intact. Personal flag events update cached rows. History is bounded at 1,000 revisions and invalidated on live edits. Account invalidation cancels requests.
+
+References: [delete](https://zulip.com/api/delete-message), [flags](https://zulip.com/api/update-message-flags), [history](https://zulip.com/api/get-message-history), [URLs](https://zulip.com/api/zulip-urls), [upstream edit/permissions](https://github.com/zulip/zulip/blob/main/zerver/views/message_edit.py), [upstream flags](https://github.com/zulip/zulip/blob/main/zerver/views/message_flags.py). Checks: 136 unit tests and production build passed.

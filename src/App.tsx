@@ -935,6 +935,10 @@ const Conversation = memo(function Conversation({
     (message: Message) => composer.current?.reply(message),
     [],
   );
+  const quote = useCallback(
+    (message: Message, raw: string) => composer.current?.quote(message, raw),
+    [],
+  );
   const sent = useCallback(
     (topic: string) => {
       atBottom.current = true;
@@ -1283,6 +1287,8 @@ const Conversation = memo(function Conversation({
                   onFocus={setFocusedMessage}
                   onSelect={onSelect}
                   onReply={reply}
+                  onQuote={quote}
+                  canDelete={(userMap.get(account.userId)?.role ?? 400) <= 200}
                   onError={setError}
                 />
               ))

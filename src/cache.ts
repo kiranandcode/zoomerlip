@@ -156,6 +156,20 @@ export function applyMessageEvent(
     if (messages.some((m) => m.id === message.id)) return messages;
     return [...messages, message].sort((a, b) => a.id - b.id);
   }
+  if (
+    event.type === "update_message_flags" &&
+    typeof event.flag === "string" &&
+    ["add", "remove"].includes(String(event.op))
+  ) {
+    const targets = new Set((event.messages || []) as number[]);
+    return messages.map((m) => {
+      if (!event.all && !targets.has(m.id)) return m;
+      const flags = new Set(m.flags || []);
+      if (event.op === "add") flags.add(event.flag as string);
+      else flags.delete(event.flag as string);
+      return { ...m, flags: [...flags] };
+    });
+  }
   if (!messages.some((m) => ids.has(m.id))) return messages;
   if (event.type === "delete_message")
     return messages.filter((m) => !ids.has(m.id));
