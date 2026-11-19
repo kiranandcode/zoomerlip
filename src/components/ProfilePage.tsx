@@ -11,6 +11,9 @@ export function ProfilePage({
   hasOlder,
   olderBusy,
   older,
+  hasNewer,
+  newerBusy,
+  newer,
   scope,
   setScope,
   onSelect,
@@ -23,6 +26,9 @@ export function ProfilePage({
   hasOlder: boolean;
   olderBusy: boolean;
   older: () => Promise<void>;
+  hasNewer: boolean;
+  newerBusy: boolean;
+  newer: () => Promise<void>;
   scope: "channels" | "all";
   setScope: (scope: "channels" | "all") => void;
   onSelect: (view: View) => void;
@@ -133,11 +139,21 @@ export function ProfilePage({
       {!loading && !messages.length && (
         <div className="empty-state">No posts found in this history.</div>
       )}
+      {hasNewer && (
+        <button
+          className="load-older"
+          disabled={newerBusy}
+          onClick={() => void newer()}
+        >
+          {newerBusy ? "Loading…" : "Load newer posts"}
+        </button>
+      )}
       <div className="activity-feed">
         {[...messages].reverse().map((message) => (
           <article
             className="activity-card"
             key={message.id}
+            data-message-id={message.id}
             aria-label={`Post by ${name}`}
           >
             <header>

@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useLayoutEffect, useRef, useState } from "react";
 import { resolveUpload as resolvePrivateUpload } from "../uploads";
 import { sanitizeContent } from "../content";
 import type { Account } from "../types";
@@ -11,7 +11,8 @@ export const MessageContent = memo(function MessageContent({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
-  useEffect(() => {
+  // Fill before paint so the conversation can restore its scroll position.
+  useLayoutEffect(() => {
     const controller = new AbortController();
     const container = ref.current!;
     container.replaceChildren(sanitizeContent(html, account.url));

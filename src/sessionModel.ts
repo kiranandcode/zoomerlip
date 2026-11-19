@@ -1,7 +1,13 @@
 import type { Channel, RecentConversation, User, ZulipEvent } from "./types";
 export const topicKey = (id: number, topic: string) =>
   JSON.stringify([id, topic.toLowerCase()]);
-type Unread = { sender?: number; stream?: number; topic?: string };
+type Unread = {
+  sender?: number;
+  stream?: number;
+  topic?: string;
+  /** topicKey(stream, topic), computed once instead of on every recount. */
+  key?: string;
+};
 export type Session = {
   channels: Channel[];
   users: User[];
@@ -278,6 +284,7 @@ export class SessionModel {
           if (m)
             this.unread.set(id, {
               ...m,
+              key: undefined,
               ...(typeof e.subject === "string" ? { topic: e.subject } : {}),
               ...(typeof e.new_stream_id === "number"
                 ? { stream: e.new_stream_id }
@@ -294,6 +301,7 @@ export class SessionModel {
   private count() {
     const muted = new Set(this.state.mutedUsers),
       topics = new Set(this.state.mutedTopics),
+      unmuted = new Set(this.state.unmutedTopics),
       mutedStreams = new Set(
         this.state.channels.filter((c) => c.is_muted).map((c) => c.stream_id),
       );
@@ -305,12 +313,11 @@ export class SessionModel {
         continue;
       }
       if (m.stream !== undefined) {
-        const key = topicKey(m.stream, m.topic || "");
+        const key = (m.key ??= topicKey(m.stream, m.topic || ""));
         topicUnreads[key] = (topicUnreads[key] || 0) + 1;
         if (
           topics.has(key) ||
-          (mutedStreams.has(m.stream) &&
-            !this.state.unmutedTopics.includes(key))
+          (mutedStreams.has(m.stream) && !unmuted.has(key))
         )
           continue;
       }

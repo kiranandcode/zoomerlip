@@ -35,6 +35,10 @@ export function basicAuth(email: string, key: string) {
 }
 const featureLevels = new Map<string, number>();
 const cooldowns = new Map<string, number>();
+/** A server may ask for a long cooldown, but not one that disables the client. */
+export const MAX_RETRY_AFTER = 10 * 60_000;
+// setTimeout treats longer delays as zero, which would retry in a tight loop.
+const MAX_TIMEOUT = 2147483647;
 export const getFeatureLevel = (org: string) => featureLevels.get(org) ?? 177;
 export function pause(ms: number, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
@@ -46,10 +50,13 @@ export function pause(ms: number, signal?: AbortSignal) {
       clearTimeout(timer);
       reject(new DOMException("Aborted", "AbortError"));
     };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", abort);
-      resolve();
-    }, ms);
+    const timer = setTimeout(
+      () => {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      },
+      Math.min(MAX_TIMEOUT, Math.max(0, ms)),
+    );
     signal?.addEventListener("abort", abort, { once: true });
   });
 }
@@ -128,12 +135,14 @@ export async function request<T>(
         header && /^\d+(?:\.\d+)?$/.test(header)
           ? Number(header)
           : Number(data.retry_after);
-      const retryAfter =
+      const retryAfter = Math.min(
+        MAX_RETRY_AFTER,
         Number.isFinite(seconds) && seconds >= 0
           ? seconds * 1000
           : header
             ? Math.max(0, Date.parse(header) - Date.now()) || 1000
-            : 1000;
+            : 1000,
+      );
       cooldowns.set(account.url, Date.now() + retryAfter);
       if (method === "GET" && attempt < 1) continue;
       throw new ApiError(

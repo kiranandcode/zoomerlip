@@ -1,3 +1,4 @@
+import { clearThreadMutes } from "./topicPreferences";
 import type { Account } from "./types";
 export const legacyAccountKey = "zoomerlip.accounts.v1";
 export const accountPrefix = "zoomerlip.account.v2.";
@@ -82,6 +83,7 @@ export function removeAccount(id: string) {
   } catch {
     /* Tombstone still revokes the session. */
   }
+  clearThreadMutes(id);
   window.dispatchEvent(new Event("zoomerlip-accounts"));
 }
 export function accountStorageEvent(e: StorageEvent) {

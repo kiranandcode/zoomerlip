@@ -70,3 +70,17 @@ it("does not let a noncanonical encoded key override a removal tombstone", () =>
   );
   expect(readAccounts()).toEqual([]);
 });
+it("deletes an organization's thread mutes, which name its topics, on removal", async () => {
+  const { setThreadMute, readThreadMutes } =
+    await import("../src/topicPreferences");
+  putAccount(a);
+  putAccount(b);
+  setThreadMute(a.id, 4, "Private plans", null);
+  setThreadMute(b.id, 4, "Kept", null);
+  removeAccount(a.id);
+  expect(readThreadMutes(a.id)).toEqual({});
+  expect(
+    Object.keys(localStorage).filter((k) => k.includes("Private")),
+  ).toEqual([]);
+  expect(Object.keys(readThreadMutes(b.id))).toHaveLength(1);
+});

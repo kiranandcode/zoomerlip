@@ -157,3 +157,23 @@ it("uses registered DM conversations even outside the latest message page", () =
     { user_ids: [3], max_message_id: 100 },
   ]);
 });
+it("recounts a moved unread message under its new topic", () => {
+  const model = new SessionModel();
+  model.register({ ...registration, muted_users: [] }, "Test");
+  model.apply([{ id: 1, type: "message", message, flags: [] }], 1);
+  expect(model.state.topicUnreads[topicKey(9, "thread")]).toBe(1);
+  model.apply(
+    [
+      {
+        id: 2,
+        type: "update_message",
+        message_id: 1,
+        message_ids: [1],
+        subject: "moved",
+      },
+    ],
+    1,
+  );
+  expect(model.state.topicUnreads[topicKey(9, "thread")]).toBeUndefined();
+  expect(model.state.topicUnreads[topicKey(9, "moved")]).toBe(1);
+});

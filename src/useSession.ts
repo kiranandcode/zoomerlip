@@ -139,7 +139,8 @@ export function useSession(account: Account, _active: boolean): Session {
           probe = false;
           retry = 0;
           const events = data.events.filter((e) => e.id > last);
-          const previous = model.state.channels.map((c) => c.stream_id);
+          const before = model.state,
+            previous = before.channels.map((c) => c.stream_id);
           const next = model.apply(events, account.userId);
           cache.purgeStreams(
             previous.filter(
@@ -150,12 +151,9 @@ export function useSession(account: Account, _active: boolean): Session {
           cache.setMutedUsers(next.mutedUsers);
           cache.events(events.filter((e) => e.type !== "heartbeat"));
           if (events.length) last = events.at(-1)!.id;
-          if (
-            next.status !== "Live" ||
-            next.error ||
-            events.some((e) => e.type !== "heartbeat")
-          )
-            status("Live");
+          // Publish only real changes: every new state re-renders the whole app.
+          if (next.status !== "Live" || next.error) status("Live");
+          else if (next !== before) setState(next);
         } catch (e) {
           if (signal.aborted || finished) break;
           if (e instanceof ApiError && e.status === 401) {

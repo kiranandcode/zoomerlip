@@ -50,6 +50,25 @@ function subscribe(fn: () => void) {
     }
   };
 }
+const cached = new Map<
+  string,
+  { revision: number; mutes: Record<string, ThreadMute> }
+>();
+/** readThreadMutes, rescanning storage only after a mute change or expiry. */
+export function currentThreadMutes(accountId: string) {
+  const hit = cached.get(accountId);
+  if (
+    hit &&
+    hit.revision === revision &&
+    Object.values(hit.mutes).every(
+      (m) => m.until === null || m.until > Date.now(),
+    )
+  )
+    return hit.mutes;
+  const mutes = readThreadMutes(accountId);
+  cached.set(accountId, { revision, mutes });
+  return mutes;
+}
 export function readThreadMutes(accountId: string): Record<string, ThreadMute> {
   const result: Record<string, ThreadMute> = {},
     start = prefix + encodeURIComponent(accountId) + ".";
@@ -74,6 +93,22 @@ export function readThreadMutes(accountId: string): Record<string, ThreadMute> {
     /* No persistence. */
   }
   return result;
+}
+/** Deletes an account's thread mutes, which name its streams and topics. */
+export function clearThreadMutes(accountId: string) {
+  const start = prefix + encodeURIComponent(accountId) + ".";
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(start)) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    /* No persistence. */
+  }
+  cached.delete(accountId);
+  notify();
 }
 export function setThreadMute(
   accountId: string,
@@ -102,7 +137,7 @@ export function setThreadMute(
 }
 export function useThreadMutes(accountId: string) {
   const version = useSyncExternalStore(subscribe, () => revision);
-  return useMemo(() => readThreadMutes(accountId), [accountId, version]);
+  return useMemo(() => currentThreadMutes(accountId), [accountId, version]);
 }
 export function useThreadMuteVersion() {
   return useSyncExternalStore(subscribe, () => revision);

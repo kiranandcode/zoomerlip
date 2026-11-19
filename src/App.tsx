@@ -43,7 +43,7 @@ import {
 } from "./accountStorage";
 import { topicKey, serverMutesTopic } from "./sessionModel";
 import {
-  readThreadMutes,
+  currentThreadMutes,
   useThreadMutes,
   useThreadMuteVersion,
 } from "./topicPreferences";
@@ -58,6 +58,9 @@ import { Login } from "./components/Login";
 import { MessageRow } from "./components/MessageRow";
 import { Composer } from "./components/Composer";
 import type { ComposerHandle } from "./components/Composer";
+import { readingAnchor, restoreAnchor } from "./scrollAnchor";
+import { orgLabel } from "./orgLabel";
+import type { ReadingAnchor } from "./scrollAnchor";
 const errorText = (e: unknown) =>
   e instanceof Error ? e.message : "Something went wrong.";
 function SessionBridge({
@@ -91,7 +94,7 @@ export default function App() {
         accounts.map((a) => {
           const session = sessions[a.id];
           if (!session) return [a.id, 0];
-          const local = readThreadMutes(a.id);
+          const local = currentThreadMutes(a.id);
           const removed = Object.keys(local).reduce((sum, key) => {
             try {
               const [id, topic] = JSON.parse(key);
@@ -216,8 +219,8 @@ export default function App() {
           {accounts.map((a, i) => (
             <button
               key={a.id}
-              title={sessions[a.id]?.name || a.name}
-              aria-label={`Open ${sessions[a.id]?.name || a.name}${unreadCounts[a.id] ? `, ${unreadCounts[a.id]} unread` : ""}`}
+              title={orgLabel(sessions[a.id]?.name || a.name, a.url)}
+              aria-label={`Open ${orgLabel(sessions[a.id]?.name || a.name, a.url)}${unreadCounts[a.id] ? `, ${unreadCounts[a.id]} unread` : ""}`}
               aria-pressed={a.id === active.id}
               className={`rail-button org ${a.id === active.id ? "selected" : ""}`}
               style={
@@ -485,7 +488,10 @@ const Workspace = memo(function Workspace({
         className={`sidebar ${showNav ? "mobile-open" : ""}`}
       >
         <header className="org-header">
-          <span className="org-name">
+          <span
+            className="org-name"
+            title={orgLabel(session?.name || account.name, account.url)}
+          >
             {session?.name || account.name}
             <small role="status" aria-live="polite">
               <i
@@ -934,10 +940,12 @@ const Conversation = memo(function Conversation({
     loading,
     error: loadError,
     hasOlder,
+    hasNewer,
     cache,
   } = useMessages(account, view);
   const [error, setError] = useState(""),
-    [olderBusy, setOlderBusy] = useState(false);
+    [olderBusy, setOlderBusy] = useState(false),
+    [newerBusy, setNewerBusy] = useState(false);
   const saved = cache.ui(view);
   const userMap = useMemo(
     () => new Map(users.map((user) => [user.user_id, user])),
@@ -969,39 +977,111 @@ const Conversation = memo(function Conversation({
     },
     [view, onSelect],
   );
+  // Message bodies fill in their own layout effects, which run before this one.
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollTop = saved.scrollTop;
   }, [saved]);
-  const lastMessage = useRef<number | undefined>(undefined);
+  // Rows are added and dropped at both ends by paging, live events and
+  // revalidation. Away from the live end, keep the row being read in place.
+  const reading = useRef<ReadingAnchor | null>(null);
+  const capture = () => {
+    const el = scroller.current;
+    reading.current = el ? readingAnchor(el) : null;
+    saved.anchorId = reading.current ? Number(reading.current.id) : undefined;
+  };
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    if (!atBottom.current && reading.current)
+      restoreAnchor(el, reading.current);
+    capture();
+  }, [messages]);
+  // Keep the newest message visible when the keyboard or window shrinks the pane.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let height = el.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (el.clientHeight !== height && atBottom.current)
+        el.scrollTop = el.scrollHeight;
+      height = el.clientHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const lastMessage = useRef<number | undefined>(undefined),
+    paging = useRef(false);
+  // Paging changes which rows exist; it is not news once that render has landed.
+  const endPaging = () =>
+    requestAnimationFrame(() => {
+      paging.current = false;
+    });
   useEffect(() => {
     if (view.type === "profile" || view.type === "home") return;
     const latest = messages.at(-1)?.id;
-    if (atBottom.current)
+    if (atBottom.current && !hasNewer)
       requestAnimationFrame(() =>
         scroller.current?.scrollTo({ top: scroller.current.scrollHeight }),
       );
     else if (
+      !paging.current &&
       lastMessage.current !== undefined &&
       latest !== lastMessage.current
     )
       setNewBelow(true);
     lastMessage.current = latest;
-  }, [messages, view.type]);
+  }, [messages, view.type, hasNewer]);
   async function older() {
     setOlderBusy(true);
-    const el = scroller.current;
-    const height = el?.scrollHeight || 0;
+    paging.current = true;
+    capture();
     try {
       await cache.older(view);
-      if (view.type !== "profile")
-        requestAnimationFrame(() => {
-          if (el) el.scrollTop += el.scrollHeight - height;
-        });
     } catch (e) {
       setError(errorText(e));
     } finally {
       setOlderBusy(false);
+      endPaging();
     }
+  }
+  const newerFlight = useRef(false),
+    scrollFrame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(scrollFrame.current), []);
+  async function newer() {
+    if (newerFlight.current) return;
+    newerFlight.current = true;
+    setNewerBusy(true);
+    paging.current = true;
+    capture();
+    try {
+      await cache.newer(view);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      newerFlight.current = false;
+      setNewerBusy(false);
+      endPaging();
+    }
+  }
+  function jumpToLatest() {
+    atBottom.current = true;
+    saved.atBottom = true;
+    saved.anchorId = undefined;
+    reading.current = null;
+    setNewBelow(false);
+    if (hasNewer) {
+      void cache.load(view, true);
+      if (view.type === "profile") scroller.current?.scrollTo({ top: 0 });
+      return;
+    }
+    scroller.current?.scrollTo({
+      top: view.type === "profile" ? 0 : scroller.current.scrollHeight,
+      behavior:
+        document.documentElement.dataset.motion === "off" ||
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "instant"
+          : "smooth",
+    });
   }
   const dms = new Map<
     string,
@@ -1077,11 +1157,22 @@ const Conversation = memo(function Conversation({
         ref={scroller}
         onScroll={() => {
           const el = scroller.current!;
-          atBottom.current =
-            el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+          // Profiles list the newest post first, so their live end is the top.
+          const gap =
+            view.type === "profile"
+              ? el.scrollTop
+              : el.scrollHeight - el.scrollTop - el.clientHeight;
+          // The end of a history window is not the end of the conversation.
+          atBottom.current = gap < 100 && !hasNewer;
           saved.scrollTop = el.scrollTop;
           saved.atBottom = atBottom.current;
+          if (!scrollFrame.current)
+            scrollFrame.current = requestAnimationFrame(() => {
+              scrollFrame.current = 0;
+              capture();
+            });
           if (atBottom.current) setNewBelow(false);
+          if (hasNewer && gap < 300) void newer();
         }}
       >
         {view.type === "profile" ? (
@@ -1094,6 +1185,9 @@ const Conversation = memo(function Conversation({
             hasOlder={hasOlder}
             olderBusy={olderBusy}
             older={older}
+            hasNewer={hasNewer}
+            newerBusy={newerBusy}
+            newer={newer}
             scope={view.posts}
             setScope={(scope) => onSelect({ ...view, posts: scope })}
             onSelect={onSelect}
@@ -1204,26 +1298,22 @@ const Conversation = memo(function Conversation({
                 />
               ))
             )}
+            {hasNewer && view.type !== "home" && (
+              <button
+                className="load-older load-newer"
+                disabled={newerBusy}
+                onClick={() => void newer()}
+              >
+                {newerBusy ? "Loading…" : "Load newer messages"}
+              </button>
+            )}
           </>
         )}
       </div>
-      {newBelow && (
-        <button
-          className="new-below"
-          onClick={() => {
-            scroller.current?.scrollTo({
-              top: scroller.current.scrollHeight,
-              behavior:
-                document.documentElement.dataset.motion === "off" ||
-                window.matchMedia("(prefers-reduced-motion: reduce)").matches
-                  ? "instant"
-                  : "smooth",
-            });
-            setNewBelow(false);
-          }}
-        >
+      {(newBelow || (hasNewer && view.type !== "home")) && (
+        <button className="new-below" onClick={jumpToLatest}>
           <ArrowDown size={14} />
-          New messages
+          {hasNewer ? "Jump to latest" : "New messages"}
         </button>
       )}
       {(error || loadError) && (
