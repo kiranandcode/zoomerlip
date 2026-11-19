@@ -1,0 +1,112 @@
+.organisation-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+  color: var(--text);
+}
+.organisation-form {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  margin-bottom: 20px;
+}
+.organisation-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--secondary);
+}
+.organisation-form input,
+.organisation-form select,
+.organisation-form textarea {
+  width: 100%;
+  min-width: 0;
+  background: var(--field);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px;
+  font: inherit;
+}
+.organisation-panel button,
+.organisation-dialog button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--text);
+}
+.organisation-panel button:disabled,
+.organisation-dialog button:disabled {
+  opacity: 0.55;
+}
+.organisation-form .check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.organisation-form input[type="checkbox"] {
+  width: auto;
+}
+.search-filters {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.search-result {
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.search-result time {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.search-result.selected {
+  border-color: var(--accent);
+}
+.organisation-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.organisation-dialog {
+  width: min(600px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.organisation-dialog::backdrop {
+  background: #0009;
+}
+.organisation-dialog .organisation-panel {
+  padding: 0;
+}
+.organisation-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+@media (max-width: 640px) {
+  .organisation-panel {
+    padding: 12px;
+  }
+  .search-filters {
+    grid-template-columns: 1fr;
+  }
+  .organisation-form input,
+  .organisation-form select {
+    font-size: 16px;
+  }
+  .organisation-panel button,
+  .organisation-dialog button {
+    min-height: 44px;
+  }
+}

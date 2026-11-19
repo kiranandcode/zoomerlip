@@ -1,0 +1,282 @@
+import { useEffect, useRef, useState } from "react";
+import type { Account, Channel, Message, View } from "../types";
+import { MessageContent } from "../components/MessageContent";
+import {
+  emptySearch,
+  messageContext,
+  SEARCH_LIMIT,
+  searchMessages,
+} from "./search";
+import type { SearchFilters } from "./search";
+import { useOrganisationRevision } from "./lifecycle";
+export function SearchPanel({
+  account,
+  channels,
+  featureLevel,
+  special,
+  onSelect,
+}: {
+  account: Account;
+  channels: Channel[];
+  featureLevel: number;
+  special?: "starred" | "mentioned";
+  onSelect: (view: View) => void;
+}) {
+  const [filters, setFilters] = useState<SearchFilters>({
+    ...emptySearch,
+    special,
+  });
+  const [query, setQuery] = useState<SearchFilters>({
+    ...emptySearch,
+    special,
+  });
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [context, setContext] = useState<{
+    view: View;
+    messages: Message[];
+    id: number;
+  } | null>(null);
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const [done, setDone] = useState(false),
+    [trimmed, setTrimmed] = useState(false);
+  const cursor = useRef<number | undefined>(undefined),
+    flight = useRef<AbortController | null>(null);
+  const revision = useOrganisationRevision(account.id);
+  async function load(reset: boolean) {
+    flight.current?.abort();
+    const controller = new AbortController();
+    flight.current = controller;
+    setBusy(true);
+    setError("");
+    if (reset) {
+      setMessages([]);
+      setContext(null);
+      cursor.current = undefined;
+      setDone(false);
+      setTrimmed(false);
+    }
+    try {
+      const page = await searchMessages(
+        account,
+        query,
+        reset ? undefined : cursor.current,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      cursor.current = page.cursor;
+      setDone(page.done);
+      setMessages((old) => {
+        const next = reset ? page.messages : [...old, ...page.messages];
+        if (next.length > SEARCH_LIMIT) setTrimmed(true);
+        return next.slice(-SEARCH_LIMIT);
+      });
+    } catch (e) {
+      if (!controller.signal.aborted) setError((e as Error).message);
+    } finally {
+      if (!controller.signal.aborted) setBusy(false);
+    }
+  }
+  useEffect(() => {
+    void load(true);
+    return () => flight.current?.abort();
+  }, [query, revision, account]);
+  async function open(message: Message) {
+    flight.current?.abort();
+    const controller = new AbortController();
+    flight.current = controller;
+    setContext(null);
+    setBusy(true);
+    setError("");
+    try {
+      const result = await messageContext(
+        account,
+        message,
+        featureLevel,
+        controller.signal,
+      );
+      if (!controller.signal.aborted) setContext({ ...result, id: message.id });
+    } catch (e) {
+      if (!controller.signal.aborted) setError((e as Error).message);
+    } finally {
+      if (!controller.signal.aborted) setBusy(false);
+    }
+  }
+  useEffect(() => {
+    if (context)
+      document
+        .querySelector<HTMLElement>(`[data-search-id="${context.id}"]`)
+        ?.focus();
+  }, [context]);
+  return (
+    <section className="organisation-panel" aria-label="Message search">
+      <form
+        className="organisation-form search-filters"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setQuery({ ...filters });
+        }}
+      >
+        <label>
+          Search text
+          <input
+            autoFocus
+            aria-label="Search message text"
+            value={filters.text}
+            maxLength={1000}
+            onChange={(e) => setFilters({ ...filters, text: e.target.value })}
+          />
+        </label>
+        <label>
+          Sender
+          <input
+            placeholder="Email or user ID"
+            value={filters.sender}
+            maxLength={1000}
+            onChange={(e) => setFilters({ ...filters, sender: e.target.value })}
+          />
+        </label>
+        <label>
+          Channel
+          <select
+            value={filters.channel}
+            onChange={(e) =>
+              setFilters({ ...filters, channel: e.target.value })
+            }
+          >
+            <option value="">All accessible channels</option>
+            {channels.map((c) => (
+              <option key={c.stream_id} value={c.stream_id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Topic
+          <input
+            value={filters.topic}
+            maxLength={1000}
+            onChange={(e) => setFilters({ ...filters, topic: e.target.value })}
+          />
+        </label>
+        <label>
+          After date
+          <input
+            type="date"
+            value={filters.after}
+            onChange={(e) => setFilters({ ...filters, after: e.target.value })}
+          />
+        </label>
+        <label>
+          Before date
+          <input
+            type="date"
+            value={filters.before}
+            onChange={(e) => setFilters({ ...filters, before: e.target.value })}
+          />
+        </label>
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={filters.attachment}
+            onChange={(e) =>
+              setFilters({ ...filters, attachment: e.target.checked })
+            }
+          />
+          Has attachment
+        </label>
+        <button type="submit">Search messages</button>
+      </form>
+      {error && (
+        <p role="alert">
+          {error} <button onClick={() => void load(true)}>Retry search</button>
+        </p>
+      )}
+      {busy && <p role="status">Loading messages…</p>}
+      {context && (
+        <div className="organisation-toolbar">
+          <button onClick={() => setContext(null)}>Back to results</button>
+          <button onClick={() => onSelect(context.view)}>
+            Open conversation
+          </button>
+        </div>
+      )}
+      {trimmed && !context && (
+        <p role="status">
+          Showing the latest 200 loaded results. Search again to return to the
+          newest matches.
+        </p>
+      )}
+      {!busy && !(context?.messages || messages).length && (
+        <p>No matching messages.</p>
+      )}
+      <div
+        className="search-results"
+        aria-label={context ? "Result in context" : "Search results"}
+        onKeyDown={(e) => {
+          if (
+            !(e.target instanceof HTMLElement) ||
+            !e.target.matches("article") ||
+            !["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)
+          )
+            return;
+          e.preventDefault();
+          const rows = [
+              ...e.currentTarget.querySelectorAll<HTMLElement>("article"),
+            ],
+            i = rows.indexOf(e.target);
+          rows[
+            e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? rows.length - 1
+                : Math.max(
+                    0,
+                    Math.min(
+                      rows.length - 1,
+                      i + (e.key === "ArrowDown" ? 1 : -1),
+                    ),
+                  )
+          ]?.focus();
+        }}
+      >
+        {(context?.messages || messages).map((m) => (
+          <article
+            tabIndex={0}
+            key={m.id}
+            data-search-id={m.id}
+            className={
+              context?.id === m.id ? "search-result selected" : "search-result"
+            }
+          >
+            <strong>{m.sender_full_name}</strong>
+            <span>
+              {" "}
+              ·{" "}
+              {typeof m.display_recipient === "string"
+                ? m.display_recipient
+                : "Direct message"}{" "}
+              · {m.subject}
+            </span>
+            <time>{new Date(m.timestamp * 1000).toLocaleString()}</time>
+            <MessageContent
+              html={m.rendered_content || m.content}
+              account={account}
+            />
+            {!context && (
+              <button disabled={busy} onClick={() => void open(m)}>
+                Open message {m.id} in context
+              </button>
+            )}
+          </article>
+        ))}
+      </div>
+      {!context && !done && (
+        <button disabled={busy} onClick={() => void load(false)}>
+          Older results
+        </button>
+      )}
+    </section>
+  );
+}
