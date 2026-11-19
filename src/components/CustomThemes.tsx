@@ -167,8 +167,16 @@ export function CustomThemes({
         ZoomerlipThemeExport?: { postMessage: (value: string) => void };
       }
     ).ZoomerlipThemeExport;
-    if (location.origin === "https://appassets.androidplatform.net" && native) {
-      native.postMessage(themeJSON(theme));
+    if (location.origin === "https://appassets.androidplatform.net") {
+      if (!native) {
+        setError("Update Android System WebView to export themes.");
+        return;
+      }
+      try {
+        native.postMessage(themeJSON(theme));
+      } catch {
+        setError("Could not export the theme.");
+      }
       return;
     }
     const url = URL.createObjectURL(
