@@ -31,6 +31,7 @@ export function Login({
           zoomerlip<span>FOR ZULIP</span>
         </div>
         <div className="story-copy">
+          <img src="/logo.svg" alt="Zoomerlip" width="96" height="96" />
           <div className="eyebrow">CHANNELS · THREADS · DMs</div>
           <h1>
             Zulip,
