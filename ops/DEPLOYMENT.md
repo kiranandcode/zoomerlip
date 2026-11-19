@@ -1,62 +1,57 @@
 # Zoomerlip operations
 
-Target: `root@178.156.241.44`. Domains: `zoomerlip.kirancodes.me` and the preserved `kalshitrader.kirancodes.me`.
+Host: `root@178.156.241.44`. Canonical domain: `zoomerlip.kirancodes.me`. The retired `kalshitrader.kirancodes.me` domain redirects to it, preserving path and query.
 
-## Prepare
+Caddy 2.11.9 serves static files with HTTP/1.1 and automatic Let's Encrypt certificates for both domains. HTML revalidates; hashed assets cache for a year. CSP denies framing. State and ACME keys stay outside `/srv/zoomerlip`; the admin API uses a permissioned Unix socket.
 
-Copy `ops/` to `/root/zoomerlip-deploy/ops/`, then run `bash ops/prepare.sh` there. This downloads Caddy **2.11.9**, verifies its upstream SHA-512 checksum, installs a dedicated service, validates configuration, and leaves it stopped/disabled. It refuses to overwrite an existing Caddy installation. Update the pinned version only after checking the upstream release and advisories.
+## Prepare and stage
 
-The server listens with HTTP/1.1 only. Both domains use automatic Let's Encrypt. The static site's CSP matches Vite's policy and adds `frame-ancestors 'none'`. HTML revalidates; hashed assets cache for a year; missing assets return 404. Caddy's state, ACME keys, and permissioned admin socket are outside `/srv/zoomerlip`. The service runs as `caddy`; release files belong to root.
+`prepare.sh` installs the pinned upstream Caddy archive after checking its SHA-512 manifest. It validates configuration and leaves Caddy stopped. It refuses to overwrite an existing installation. Review upstream releases and advisories before changing the version.
 
-Run `bash ops/smoke-stage.sh` on the server for loopback-only routing checks using a temporary static fixture. This never binds ports 80/443 or requests certificates. It performs only a GET against the existing Kalshi dashboard.
-
-## Stage the fresh build
-
-Build on `kirans-macbook-pro` in an isolated checkout. Copy only the reviewed `dist/` into a private server staging directory. Do not include the checkout, local credentials, themes, source maps, or Android output. Record the source commit and artifact digest.
+Build in an isolated checkout on the MacBook Pro. Copy only the verified `dist/`, then stage it:
 
 ```sh
-/usr/local/lib/zoomerlip-ops/stage-release.sh /root/zoomerlip-artifact/dist COMMIT-TIMESTAMP
+/usr/local/lib/zoomerlip-ops/stage-release.sh /root/artifact/dist RELEASE_ID
+/usr/local/lib/zoomerlip-ops/smoke-stage.sh /srv/zoomerlip/releases/RELEASE_ID
 ```
 
-This writes `/srv/zoomerlip/releases/COMMIT-TIMESTAMP` and its checksum manifest. It does not change `/srv/zoomerlip/current` or public routing.
+Staging records SHA-256 checksums without changing `current`. The smoke test binds only loopback ports, checks routes and redirects, and compares every served release file against its source. It never posts to a webhook or Zulip organisation.
 
-## Initial migration — explicit approval required
+## Retirement and cutover
 
-Obtain approval to briefly stop the shared nginx frontend and suspend its Certbot renewal timer. Caddy will preserve Kalshi's dashboard, exact webhook route, and WebSocket support. Neither Kalshi backend service is stopped or restarted. No Kalshi redirect is configured.
+These actions require explicit retirement and cutover authorisation. `retire-kalshi.sh --approved` stops/disables both Kalshi services, stops the old Certbot renewal timer, and creates a root-only archive under `/var/backups/kalshi-retired/TIMESTAMP`. It verifies the archive against disk before deleting the application tree and live unit files. Both services are then masked. Their environment files and local data remain recoverable inside the archive. Original nginx and Let's Encrypt configuration is archived too.
 
-Confirm DNS A records point to this host and no stale AAAA records exist. Current Zoomerlip DNS already points to `178.156.241.44`. No DNS mutation is part of these scripts.
+The live nginx configuration becomes an emergency fallback with no upstream proxies. Its old-domain listeners redirect to Zoomerlip; other HTTP requests receive 503. TLS fallback material is kept root-only alongside the archive. The old Certbot renewal configuration is removed. SSH configuration, accounts and authorised keys are outside these scripts' scope.
 
-After approval, execute through systemd so the operation survives SSH loss and has a four-minute runtime limit:
+After retirement, execute the bounded cutover:
 
 ```sh
 systemd-run --unit=zoomerlip-cutover --collect --wait \
   --property=RuntimeMaxSec=240 --property=TimeoutStopSec=10 \
-  /usr/local/lib/zoomerlip-ops/cutover.sh --approved COMMIT-TIMESTAMP
+  /usr/local/lib/zoomerlip-ops/cutover.sh --approved RELEASE_ID
 ```
 
-The script backs up nginx/Let's Encrypt configuration, captures service/timer state, arms an independent five-minute rollback, and switches the release symlink atomically. It stops nginx and starts Caddy. Initial certificate issuance may extend the interruption. Failure invokes rollback. The watchdog restores nginx after a killed or timed-out migration.
+The script verifies retirement and release checksums, arms a five-minute rollback timer, selects the release atomically, stops nginx and starts Caddy. Certificate issuance may briefly extend the interruption. After verification passes, it disables nginx, enables Caddy and cancels rollback.
 
-Successful checks disable nginx startup, enable Caddy startup, and cancel rollback. Old nginx files/certificates remain intact. Certbot's nginx renewal timer stays disabled because Caddy owns certificate renewal. Do not run nginx's Certbot renewal manually while Caddy owns ports 80/443.
+## Verification and rollback
 
-Inspect `journalctl -u caddy` and run `ops/verify.sh` on the server. Also verify the public URL externally and inspect TLS ALPN: offering `h2,http/1.1` must negotiate `http/1.1`; certificates must be trusted and issued by Let's Encrypt. Never POST to the production webhook or a real Zulip organization for testing.
+Run `verify.sh` on the server, then verify public HTTPS externally. It checks trusted HTTPS, Let's Encrypt issuers, HTTP/1.1 negotiation, assets, security/cache headers and redirects with a path and query. `verify-retirement.sh` confirms both retired services are masked/inactive, their main PIDs are zero, ports 8000/9000 are closed, and live application/configuration paths are absent.
 
-## Rollback
-
-The cutover prints its exact root-only backup directory:
+On cutover failure, rollback runs automatically. Manual invocation:
 
 ```sh
 /usr/local/lib/zoomerlip-ops/rollback.sh /var/backups/zoomerlip/TIMESTAMP
 ```
 
-This stops/disables Caddy, restores the previous release pointer, validates/starts nginx, and restores previous nginx startup and Certbot timer states. It does not restart Kalshi backends. Initial rollback removes Zoomerlip's public endpoint because the original nginx configuration serves only Kalshi.
+Rollback enables only the emergency nginx frontend. It never restores trading services, app files, original proxy routes or Certbot timers. It refuses nginx configurations containing upstream proxies. Zoomerlip HTTPS may be unavailable until Caddy is repaired; the fallback is not a second production deployment. Archived fallback certificates retain their original expiry.
 
-Backups contain TLS private keys. Keep them root-only and out of Git. Do not delete nginx or these backups during the migration.
+Recovery of retired application data is manual and requires separate authorisation. Keep the archive root-only and out of Git. Do not extract it into a live application path during frontend rollback.
 
-For later static releases, stage first, then atomically replace `/srv/zoomerlip/current` using a temporary symlink and `mv -Tf`. Keep the previous release path for rollback. No web-server restart is required. Existing browser tabs may need a refresh after an asset-changing release.
+Later static releases need only a staged directory and an atomic `current` symlink replacement. Keep the previous release for reversal; no web-server restart is required.
 
 ## References
 
-- [Caddy 2.11.9 release and security fixes](https://github.com/caddyserver/caddy/releases/tag/v2.11.9)
-- [Caddy advisories](https://github.com/caddyserver/caddy/security/advisories)
-- [HTTP protocols and ACME configuration](https://caddyserver.com/docs/caddyfile/options)
+- [Caddy 2.11.9 release](https://github.com/caddyserver/caddy/releases/tag/v2.11.9)
+- [Security advisories](https://github.com/caddyserver/caddy/security/advisories)
+- [Protocols and ACME options](https://caddyserver.com/docs/caddyfile/options)
 - [systemd operation](https://caddyserver.com/docs/running)

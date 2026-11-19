@@ -25,7 +25,8 @@ install -d -o caddy -g caddy -m 0700 /var/lib/caddy
 install -m 0755 "$work/caddy" /usr/local/bin/caddy
 install -m 0644 Caddyfile /etc/caddy/Caddyfile
 install -m 0644 caddy.service /etc/systemd/system/caddy.service
-install -m 0755 stage-release.sh cutover.sh rollback.sh verify.sh /usr/local/lib/zoomerlip-ops/
+install -m 0755 stage-release.sh cutover.sh rollback.sh verify.sh retire-kalshi.sh verify-retirement.sh smoke-stage.sh /usr/local/lib/zoomerlip-ops/
+install -m 0644 nginx-retired.conf /usr/local/lib/zoomerlip-ops/
 install -m 0644 "$work/$checksums" /usr/local/lib/zoomerlip-ops/caddy-checksums.txt
 /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 systemd-analyze verify /etc/systemd/system/caddy.service

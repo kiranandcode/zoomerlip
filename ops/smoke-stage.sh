@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Loopback-only routing rehearsal. No public listeners, ACME, or webhook writes.
+# Loopback-only routing rehearsal, optionally against a staged release directory.
 set -euo pipefail
 [[ $EUID == 0 ]] || exit 1
 tmp=$(mktemp -d /var/tmp/zoomerlip-smoke.XXXXXX)
@@ -9,9 +9,18 @@ cleanup() {
   rm -rf -- "$tmp"
 }
 trap cleanup EXIT
-mkdir -p "$tmp/site/assets"
-printf '<title>Zoomerlip fixture</title><script src="/assets/fixture.js"></script>\n' > "$tmp/site/index.html"
-printf '/* static fixture */\n' > "$tmp/site/assets/fixture.js"
+release=${1:-}
+if [[ -n $release ]]; then
+  [[ $release == /srv/zoomerlip/releases/* && -s $release/index.html && -f $release.sha256 ]]
+  ln -s -- "$release" "$tmp/site"
+  asset=$(grep -oE '/assets/[^" ]+\.js' "$release/index.html" | head -1)
+  [[ -n $asset ]]
+else
+  mkdir -p "$tmp/site/assets"
+  printf '<title>Zoomerlip fixture</title><script src="/assets/fixture.js"></script>\n' > "$tmp/site/index.html"
+  printf '/* static fixture */\n' > "$tmp/site/assets/fixture.js"
+  asset=/assets/fixture.js
+fi
 # Use the same routes, replacing only addresses, document root and ACME/admin.
 sed \
   -e 's@admin unix//run/caddy/admin.sock@admin off@' \
@@ -30,17 +39,29 @@ for _attempt in {1..20}; do
 done
 [[ $ready == true ]] || { cat "$tmp/log"; exit 1; }
 curl -fsS -D "$tmp/headers" -H 'Host: zoomerlip.kirancodes.me' http://127.0.0.1:18080/ -o "$tmp/index"
-grep -q 'Zoomerlip fixture' "$tmp/index"
+grep -q 'Zoomerlip' "$tmp/index"
 grep -qi '^cache-control: no-cache' "$tmp/headers"
 grep -qi "frame-ancestors 'none'" "$tmp/headers"
-curl -fsS -D "$tmp/asset-headers" -H 'Host: zoomerlip.kirancodes.me' http://127.0.0.1:18080/assets/fixture.js -o /dev/null
+curl -fsS -D "$tmp/asset-headers" -H 'Host: zoomerlip.kirancodes.me' "http://127.0.0.1:18080$asset" -o /dev/null
 grep -qi '^cache-control: public, max-age=31536000, immutable' "$tmp/asset-headers"
 for path in /.env /.git/config /local/test-account.json /assets/missing.js; do
   [[ $(curl -sS -H 'Host: zoomerlip.kirancodes.me' -o /dev/null -w '%{http_code}' "http://127.0.0.1:18080$path") == 404 ]]
 done
 curl -fsS -H 'Host: zoomerlip.kirancodes.me' http://127.0.0.1:18080/a/deep/link -o "$tmp/fallback"
 cmp "$tmp/index" "$tmp/fallback"
-curl -fsS -H 'Host: kalshitrader.kirancodes.me' http://127.0.0.1:18080/ -o /dev/null
+for port in 18080 18081; do
+  code=$(curl -sS -D "$tmp/old-domain" -H 'Host: kalshitrader.kirancodes.me' "http://127.0.0.1:$port/channels/example?topic=release%20check" -o /dev/null -w '%{http_code}')
+  [[ $code == 308 ]]
+  tr -d '\r' < "$tmp/old-domain" | grep -iFx 'location: https://zoomerlip.kirancodes.me/channels/example?topic=release%20check'
+done
 curl -sS -D "$tmp/redirect" -H 'Host: zoomerlip.kirancodes.me' http://127.0.0.1:18081/ -o /dev/null
 grep -qi '^location: https://zoomerlip.kirancodes.me/' "$tmp/redirect"
-echo 'Loopback routes, caching, CSP, private-path denial, SPA fallback, Kalshi proxy, and redirect passed.'
+if [[ -n $release ]]; then
+  (cd "$release"; sha256sum --check "$release.sha256" >/dev/null)
+  while read -r _digest filename; do
+    runuser -u caddy -- test -r "$release/$filename"
+    curl -fsS --max-time 5 -H 'Host: zoomerlip.kirancodes.me' "http://127.0.0.1:18080/${filename#./}" -o "$tmp/served"
+    cmp "$release/$filename" "$tmp/served"
+  done < "$release.sha256"
+fi
+echo 'Loopback routes, caching, CSP, private-path denial, SPA fallback and retired-domain redirects passed.'

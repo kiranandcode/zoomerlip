@@ -8,7 +8,7 @@
 
 # Explicit HTTP sites ensure the protocol setting also covers redirects.
 http://zoomerlip.kirancodes.me, http://kalshitrader.kirancodes.me {
-	redir https://{host}{uri} permanent
+	redir https://zoomerlip.kirancodes.me{uri} 308
 }
 
 zoomerlip.kirancodes.me {
@@ -36,25 +36,7 @@ zoomerlip.kirancodes.me {
 	}
 }
 
-# Preserve the existing dashboard, webhook, and WebSocket routing.
+# The retired domain redirects; no trading or webhook upstream remains.
 kalshitrader.kirancodes.me {
-	handle /deploy-webhook {
-		reverse_proxy 127.0.0.1:9000 {
-			header_up X-Real-IP {remote_host}
-			transport http {
-				versions 1.1
-			}
-		}
-	}
-	handle {
-		reverse_proxy 127.0.0.1:8000 {
-			header_up X-Real-IP {remote_host}
-			transport http {
-				versions 1.1
-				dial_timeout 75s
-				response_header_timeout 300s
-				read_timeout 300s
-			}
-		}
-	}
+	redir https://zoomerlip.kirancodes.me{uri} 308
 }

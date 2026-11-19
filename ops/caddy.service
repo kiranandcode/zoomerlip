@@ -1,5 +1,5 @@
 [Unit]
-Description=Caddy HTTPS frontend for Zoomerlip and kalshitrader
+Description=Caddy HTTPS frontend for Zoomerlip and retired-domain redirects
 Documentation=https://caddyserver.com/docs/
 After=network-online.target
 Wants=network-online.target

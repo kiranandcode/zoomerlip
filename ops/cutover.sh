@@ -1,42 +1,36 @@
 #!/usr/bin/env bash
-# Requires explicit approval for the shared nginx/kalshitrader frontend handover.
+# Publish Zoomerlip after explicit approval and completed Kalshi retirement.
 set -euo pipefail
 [[ $EUID == 0 && ${1:-} == --approved ]] || {
-  echo 'Usage: cutover.sh --approved RELEASE_ID (only after explicit approval)' >&2; exit 1;
+  echo 'Usage: cutover.sh --approved RELEASE_ID' >&2; exit 1;
 }
-release=${2:?Fresh reviewed release ID required}
+release=${2:?Verified release ID required}
 [[ $release =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]+$ ]]
 [[ -s /srv/zoomerlip/releases/$release/index.html ]]
 [[ ! -e /srv/zoomerlip/current || -L /srv/zoomerlip/current ]]
 exec 9>/run/zoomerlip-migration.lock
 flock -n 9
+/usr/local/lib/zoomerlip-ops/verify-retirement.sh
 systemctl is-active --quiet nginx
-for service in caddy snap.certbot.renew.service certbot.service; do
-  if systemctl is-active --quiet "$service"; then echo "$service is already active; aborting." >&2; exit 1; fi
-done
+if systemctl is-active --quiet caddy; then echo 'Caddy is already active.' >&2; exit 1; fi
+(cd "/srv/zoomerlip/releases/$release"; sha256sum --check "../$release.sha256" >/dev/null)
 nginx -t
 /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-curl --fail --silent --show-error --max-time 15 https://kalshitrader.kirancodes.me/ -o /dev/null
-[[ $(dig +short A zoomerlip.kirancodes.me | tail -1) == 178.156.241.44 ]]
-[[ -z $(dig +short AAAA zoomerlip.kirancodes.me) ]]
+for domain in zoomerlip.kirancodes.me kalshitrader.kirancodes.me; do
+  [[ $(dig +short A "$domain" | tail -1) == 178.156.241.44 ]]
+  [[ -z $(dig +short AAAA "$domain") ]]
+done
 state="/var/backups/zoomerlip/$(date -u +%Y%m%dT%H%M%SZ)"
 install -d -m 0700 "$state"
 umask 077
-tar -czf "$state/nginx-letsencrypt.tar.gz" /etc/nginx /etc/letsencrypt
+# Only the retirement-safe nginx config is eligible for frontend rollback.
+tar -czf "$state/nginx-retired.tar.gz" -C / etc/nginx
 cp /etc/caddy/Caddyfile "$state/Caddyfile"
-systemctl is-enabled nginx > "$state/nginx-enabled" || true
+cp /var/lib/zoomerlip-ops/retirement "$state/retirement"
 readlink /srv/zoomerlip/current > "$state/previous-release" || true
-: > "$state/timers"
-for timer in snap.certbot.renew.timer certbot.timer; do
-  if systemctl cat "$timer" >/dev/null 2>&1; then
-    enabled=$(systemctl is-enabled "$timer" || true)
-    active=$(systemctl is-active "$timer" || true)
-    printf '%s %s %s\n' "$timer" "$enabled" "$active" >> "$state/timers"
-  fi
-done
+printf '%s\n' "$release" > "$state/release"
 touch "$state/ready"
 echo "Rollback: /usr/local/lib/zoomerlip-ops/rollback.sh $state"
-# Survives an SSH disconnect or a killed cutover process.
 watchdog="zoomerlip-rollback-$(date +%s)"
 systemd-run --unit="$watchdog" --on-active=5m /usr/local/lib/zoomerlip-ops/rollback.sh "$state"
 rollback_on_error() {
@@ -48,14 +42,10 @@ rollback_on_error() {
   exit "$result"
 }
 trap 'rollback_on_error "$?"' EXIT
-while read -r timer enabled active; do
-  if [[ $enabled != masked ]]; then systemctl disable --now "$timer"; fi
-done < "$state/timers"
 ln -s -- "/srv/zoomerlip/releases/$release" /srv/zoomerlip/.next-current
 mv -Tf /srv/zoomerlip/.next-current /srv/zoomerlip/current
 systemctl stop nginx
 systemctl start caddy
-# Wait for both public certificates. All requests are GETs, never webhook POSTs.
 healthy=false
 for _attempt in {1..20}; do
   if curl --fail --silent --max-time 3 --resolve 'zoomerlip.kirancodes.me:443:127.0.0.1' https://zoomerlip.kirancodes.me/ -o /dev/null &&
@@ -69,4 +59,4 @@ systemctl enable caddy
 systemctl stop "$watchdog.timer"
 trap - EXIT
 date -u > "$state/completed"
-echo "Cutover verified. Rollback state: $state"
+echo "Cutover verified. Frontend rollback state: $state"
