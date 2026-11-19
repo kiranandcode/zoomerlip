@@ -37,6 +37,16 @@ const page = await context.newPage();
 const errors = [],
   blocked = [];
 page.on("pageerror", (e) => errors.push(e.message));
+const profile = {
+  user_id: 1,
+  full_name: "Fixture User",
+  email: "fixture@test.invalid",
+  is_active: true,
+  is_bot: false,
+  profile_data: { 1: { value: "old" }, 2: { value: "managed" } },
+};
+const profileWrites = [];
+let failProfile = true;
 let edits = 0,
   eventCalls = 0;
 // Every context gets the same synthetic organization and network fence.
@@ -111,6 +121,49 @@ async function prepare(ctx) {
         messages: narrow.some((n) => n.operator === "stream") ? messages : [],
         found_oldest: true,
       };
+    } else if (path.endsWith("/users/me")) data = { ...data, ...profile };
+    else if (path.endsWith("/realm/profile_fields"))
+      data = {
+        ...data,
+        custom_fields: [
+          {
+            id: 1,
+            type: 8,
+            name: "Pronouns",
+            order: 0,
+            editable_by_user: true,
+          },
+          {
+            id: 2,
+            type: 1,
+            name: "Directory ID",
+            order: 1,
+            editable_by_user: false,
+          },
+        ],
+      };
+    else if (path.endsWith("/settings") && request.method() === "PATCH") {
+      const body = new URLSearchParams(request.postData());
+      profileWrites.push({ path, body: Object.fromEntries(body) });
+      profile.full_name = body.get("full_name");
+    } else if (
+      path.endsWith("/users/me/profile_data") &&
+      request.method() === "PATCH"
+    ) {
+      const values = JSON.parse(
+        new URLSearchParams(request.postData()).get("data"),
+      );
+      profileWrites.push({ path, values });
+      if (failProfile) {
+        failProfile = false;
+        return route.fulfill({
+          status: 400,
+          json: { result: "error", msg: "Synthetic rejection" },
+          headers: { "access-control-allow-origin": "*" },
+        });
+      }
+      for (const value of values)
+        profile.profile_data[value.id] = { value: value.value };
     } else if (/\/messages\/\d+$/.test(path)) {
       if (request.method() === "PATCH") edits++;
       else
@@ -259,6 +312,36 @@ try {
   await expect(page.locator(".conversation-header strong")).toHaveText(
     "Direct messages",
   );
+  await page.getByRole("button", { name: "My posts", exact: true }).click();
+  await page.getByRole("button", { name: "Edit profile", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Edit profile" });
+  await expect(editor.getByLabel("Display name")).toHaveValue("Fixture User");
+  await expect(
+    editor.getByLabel("Directory ID", { exact: false }),
+  ).toBeDisabled();
+  await editor.getByLabel("Display name").fill("Fixture Edited");
+  await editor.getByLabel("Pronouns").fill("they/them");
+  await editor.getByRole("button", { name: "Save profile" }).click();
+  await expect(editor.getByRole("alert")).toContainText(
+    "Some changes were saved",
+  );
+  await expect(editor.getByLabel("Pronouns")).toHaveValue("they/them");
+  await editor.getByRole("button", { name: "Save profile" }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(page.locator(".profile-summary h1")).toHaveText(
+    "Fixture Edited",
+  );
+  expect(
+    profileWrites.filter((write) => write.path.endsWith("/settings")),
+  ).toHaveLength(1);
+  expect(
+    profileWrites
+      .filter((write) => write.values)
+      .every((write) => write.values.every((value) => value.id === 1)),
+  ).toBe(true);
+  await page
+    .getByRole("button", { name: "Conversations", exact: true })
+    .click();
   const owner = page.locator('[data-member-id="1"]');
   await owner.focus();
   await page.locator(".member-window").evaluate((el) => {
@@ -315,6 +398,25 @@ try {
   });
   // A 320px touch phone: actions by tap only, a picker that fits the pane,
   // and Enter that adds a line instead of sending.
+  const trustedTypes = await page.evaluate(() => {
+    const element = document.createElement("div");
+    let blockedHTML = false,
+      blockedPolicy = false;
+    try {
+      element.innerHTML = "<img src=x onerror=alert(1)>";
+    } catch {
+      blockedHTML = true;
+    }
+    try {
+      window.trustedTypes.createPolicy("unapproved", {
+        createHTML: (value) => value,
+      });
+    } catch {
+      blockedPolicy = true;
+    }
+    return { blockedHTML, blockedPolicy };
+  });
+  expect(trustedTypes).toEqual({ blockedHTML: true, blockedPolicy: true });
   const touch = await browser.newContext({
     viewport: { width: 320, height: 640 },
     hasTouch: true,
@@ -332,6 +434,19 @@ try {
       exact: true,
     })
     .tap();
+  await expect(phone.locator(".org-rail")).toBeHidden();
+  await expect(phone.locator(".sidebar")).toBeHidden();
+  expect((await phone.locator(".main-pane").boundingBox()).x).toBe(0);
+  await phone.getByRole("button", { name: "Toggle channels" }).tap();
+  await expect(phone.locator(".org-rail")).toBeVisible();
+  await expect(phone.locator(".main-pane")).toHaveAttribute("inert", "");
+  await phone
+    .getByRole("button", { name: "Close channels", exact: true })
+    .tap();
+  await expect(phone.locator(".org-rail")).toBeHidden();
+  await phone.getByRole("button", { name: "Toggle channels" }).tap();
+  await phone.locator(".nav-backdrop").tap({ position: { x: 315, y: 300 } });
+  await expect(phone.locator(".sidebar")).toBeHidden();
   const row = phone.locator(".message").last();
   await row.scrollIntoViewIfNeeded();
   // Tap the message body: the row's centre can land on the sender's name,

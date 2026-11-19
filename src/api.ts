@@ -1,4 +1,5 @@
 import type { Account, View } from "./types";
+import { boundedJSON, ResponseTooLarge } from "./responseBody";
 export { readAccounts } from "./accountStorage";
 export class ApiError extends Error {
   constructor(
@@ -63,13 +64,16 @@ export function pause(ms: number, signal?: AbortSignal) {
 export async function request<T>(
   account: Pick<Account, "url" | "email" | "apiKey">,
   path: string,
-  params: Record<string, unknown> = {},
+  params: Record<string, unknown> | FormData = {},
   method = "GET",
   signal?: AbortSignal,
   timeoutMs = 30000,
 ): Promise<T> {
   const body = new URLSearchParams();
-  for (const [key, value] of Object.entries(params))
+  const multipart = params instanceof FormData;
+  if (multipart && method === "GET")
+    throw new Error("Files require a POST request.");
+  for (const [key, value] of Object.entries(multipart ? {} : params))
     if (value !== undefined)
       body.set(
         key,
@@ -101,7 +105,9 @@ export async function request<T>(
           headers: account.apiKey
             ? { Authorization: basicAuth(account.email, account.apiKey) }
             : {},
-          ...(method !== "GET" ? { body } : {}),
+          ...(method !== "GET"
+            ? { body: multipart ? (params as FormData) : body }
+            : {}),
         },
       );
       if (
@@ -118,13 +124,28 @@ export async function request<T>(
             },
           }),
         );
-      data = await response.json().catch(() => {
+      data = await boundedJSON(response).catch((error) => {
+        if (error instanceof ResponseTooLarge) {
+          control.abort();
+          throw new ApiError(
+            error.message,
+            "RESPONSE_TOO_LARGE",
+            response.status,
+          );
+        }
+        if (control.signal.aborted) throw control.signal.reason;
         throw new ApiError(
           `Server returned ${response.status}; check the organization URL.`,
           "",
           response.status,
         );
       });
+      if (!data || typeof data !== "object" || Array.isArray(data))
+        throw new ApiError(
+          "Invalid server response.",
+          "INVALID_RESPONSE",
+          response.status,
+        );
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener("abort", abort);

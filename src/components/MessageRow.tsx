@@ -1,4 +1,11 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Check,
   ChevronRight,
@@ -71,9 +78,34 @@ export const MessageRow = memo(function MessageRow({
       alive.current = false;
     };
   }, []);
-  useEffect(() => {
-    if (picker)
-      pickerRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  useLayoutEffect(() => {
+    if (!picker) return;
+    const element = pickerRef.current!,
+      row = article.current!;
+    const scroller = row.closest<HTMLElement>(".message-scroll");
+    const fit = () => {
+      if (!scroller) return;
+      const pane = scroller.getBoundingClientRect();
+      const anchor = row.getBoundingClientRect();
+      element.style.maxHeight = `${Math.max(48, pane.height - 16)}px`;
+      element.style.overflowY = "auto";
+      const height = element.getBoundingClientRect().height;
+      const top = Math.max(
+        pane.top + 8,
+        Math.min(anchor.top + 20, pane.bottom - height - 8),
+      );
+      element.style.top = `${top - anchor.top}px`;
+    };
+    fit();
+    element
+      .querySelector<HTMLButtonElement>("button")
+      ?.focus({ preventScroll: true });
+    scroller?.addEventListener("scroll", fit, { passive: true });
+    window.addEventListener("resize", fit);
+    return () => {
+      scroller?.removeEventListener("scroll", fit);
+      window.removeEventListener("resize", fit);
+    };
   }, [picker]);
   useEffect(() => {
     if (editing) editRef.current?.focus();

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { ArrowRight, KeyRound, X } from "lucide-react";
-import { Appearance } from "./Appearance";
+import { Appearance } from "./AppearanceLoader";
 import { login } from "../api";
 import type { Account } from "../types";
 export function Login({

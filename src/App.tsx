@@ -11,7 +11,6 @@ import {
 } from "react";
 import {
   AtSign,
-  ChevronDown,
   ChevronRight,
   Hash,
   Home,
@@ -26,14 +25,12 @@ import {
   UserRound,
   Palette,
   Lock,
-  MoreHorizontal,
-  BellOff,
 } from "lucide-react";
 import { clearCache, getCache } from "./cache";
 import { useMessages } from "./useMessages";
 import { Avatar, initials } from "./components/Avatar";
 import { ProfilePage } from "./components/ProfilePage";
-import { Appearance } from "./components/Appearance";
+import { Appearance } from "./components/AppearanceLoader";
 import { MemberList } from "./components/MemberList";
 import { readAccounts } from "./api";
 import {
@@ -59,8 +56,10 @@ import { MessageRow } from "./components/MessageRow";
 import { Composer } from "./components/Composer";
 import type { ComposerHandle } from "./components/Composer";
 import { readingAnchor, restoreAnchor } from "./scrollAnchor";
+import { ChannelNavRow, TopicNavRow } from "./components/NavigationRows";
 import { orgLabel } from "./orgLabel";
 import type { ReadingAnchor } from "./scrollAnchor";
+const memberCollator = new Intl.Collator();
 const errorText = (e: unknown) =>
   e instanceof Error ? e.message : "Something went wrong.";
 function SessionBridge({
@@ -81,6 +80,7 @@ function SessionBridge({
 export default function App() {
   const muteVersion = useThreadMuteVersion();
   const [accounts, setAccounts] = useState(readAccounts);
+  const [showNav, setShowNav] = useState(false);
   const [activeId, setActiveId] = useState(() => accounts[0]?.id);
   const [sessions, setSessions] = useState<Record<string, Session>>({});
   const [adding, setAdding] = useState(false),
@@ -196,7 +196,7 @@ export default function App() {
     );
   return (
     <>
-      <div className="app-shell">
+      <div className={`app-shell ${showNav ? "navigation-open" : ""}`}>
         {accounts.map((a) => (
           <SessionBridge
             key={`${a.id}:${a.apiKey}`}
@@ -251,6 +251,8 @@ export default function App() {
           account={active}
           session={sessions[active.id]}
           onLogout={logout}
+          showNav={showNav}
+          setShowNav={setShowNav}
         />
       </div>
       {storageError && (
@@ -300,10 +302,14 @@ const Workspace = memo(function Workspace({
   account,
   session,
   onLogout,
+  showNav,
+  setShowNav,
 }: {
   account: Account;
   session?: Session;
   onLogout: () => void;
+  showNav: boolean;
+  setShowNav: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
   const cache = getCache(account);
   const topicVersion = useSyncExternalStore(
@@ -320,7 +326,6 @@ const Workspace = memo(function Workspace({
     [topics, setTopics] = useState<Record<number, Topic[]>>({});
   const [filter, setFilter] = useState(""),
     [showMembers, setShowMembers] = useState(true),
-    [showNav, setShowNav] = useState(false),
     [topicError, setTopicError] = useState("");
   const search = useDeferredValue(filter.toLowerCase());
   const channels = session?.channels || [];
@@ -390,19 +395,65 @@ const Workspace = memo(function Workspace({
   const navClose = useRef<HTMLButtonElement>(null);
   const closeNav = useCallback(() => {
     setShowNav(false);
+    const main = document.querySelector<HTMLElement>(".main-pane");
+    if (main) main.inert = false;
     navToggle.current?.focus();
   }, []);
   useEffect(() => {
     if (!showNav) return;
+    const mobile = matchMedia(
+      "(max-width: 640px), (max-width: 900px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse)",
+    );
+    const background = [
+      ...document.querySelectorAll<HTMLElement>(".main-pane, .members"),
+    ];
+    const apply = () => {
+      background.forEach((element) => {
+        element.inert = mobile.matches;
+      });
+    };
+    apply();
+    mobile.addEventListener("change", apply);
     navClose.current?.focus();
-    const escape = (event: KeyboardEvent) => {
+    const key = (event: KeyboardEvent) => {
+      if (
+        !mobile.matches ||
+        document.querySelector('dialog[open], [role="menu"]')
+      )
+        return;
       if (event.key === "Escape") {
         event.preventDefault();
         closeNav();
       }
+      if (event.key === "Tab") {
+        const buttons = [
+          ...document.querySelectorAll<HTMLElement>(
+            ".org-rail button, .sidebar button, .sidebar input",
+          ),
+        ].filter(
+          (element) =>
+            element.getClientRects().length &&
+            !element.hasAttribute("disabled"),
+        );
+        const first = buttons[0],
+          last = buttons.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
     };
-    window.addEventListener("keydown", escape);
-    return () => window.removeEventListener("keydown", escape);
+    window.addEventListener("keydown", key);
+    return () => {
+      background.forEach((element) => {
+        element.inert = false;
+      });
+      window.removeEventListener("keydown", key);
+      mobile.removeEventListener("change", apply);
+    };
   }, [showNav, closeNav]);
   const selectedChannel =
     view.type === "channel"
@@ -441,16 +492,33 @@ const Workspace = memo(function Workspace({
     // The stable key avoids refetching on unrelated renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cache, expandedKey, topicVersion]);
-  const select = useCallback((next: View) => {
-    setView(next);
-    setShowNav(false);
-  }, []);
+  const select = useCallback(
+    (next: View) => {
+      setView(next);
+      setShowNav(false);
+    },
+    [setShowNav],
+  );
+  const toggleChannel = useCallback(
+    (id: number) =>
+      setExpanded((ids) =>
+        ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id],
+      ),
+    [],
+  );
+  const openChannel = useCallback(
+    (id: number) => {
+      select({ type: "channel", channelId: id });
+      setExpanded((ids) => (ids.includes(id) ? ids : [...ids, id]));
+    },
+    [select],
+  );
   const me = userMap.get(account.userId);
   const members = useMemo(
     () =>
       users
         .filter((u) => u.is_active && !u.is_bot)
-        .sort((a, b) => a.full_name.localeCompare(b.full_name)),
+        .sort((a, b) => memberCollator.compare(a.full_name, b.full_name)),
     [users],
   );
   const visiblePeople = useMemo(
@@ -493,6 +561,7 @@ const Workspace = memo(function Workspace({
             title={orgLabel(session?.name || account.name, account.url)}
           >
             {session?.name || account.name}
+            <span className="org-host">{new URL(account.url).host}</span>
             <small role="status" aria-live="polite">
               <i
                 className={
@@ -550,51 +619,16 @@ const Workspace = memo(function Workspace({
             .filter((c) => c.name.toLowerCase().includes(search))
             .map((channel) => (
               <div key={channel.stream_id}>
-                <div
-                  className={`channel-row ${view.type === "channel" && view.channelId === channel.stream_id ? "current" : ""}`}
-                >
-                  <button
-                    className="expand"
-                    aria-label={`${expanded.includes(channel.stream_id) ? "Collapse" : "Expand"} ${channel.name}`}
-                    aria-expanded={expanded.includes(channel.stream_id)}
-                    onClick={() =>
-                      setExpanded((ids) =>
-                        ids.includes(channel.stream_id)
-                          ? ids.filter((id) => id !== channel.stream_id)
-                          : [...ids, channel.stream_id],
-                      )
-                    }
-                  >
-                    {expanded.includes(channel.stream_id) ? (
-                      <ChevronDown size={14} />
-                    ) : (
-                      <ChevronRight size={14} />
-                    )}
-                  </button>
-                  <button
-                    className="channel-name"
-                    aria-label={
-                      channel.invite_only
-                        ? `${channel.name} (private channel)`
-                        : channel.name
-                    }
-                    onClick={() => {
-                      select({ type: "channel", channelId: channel.stream_id });
-                      setExpanded((ids) =>
-                        ids.includes(channel.stream_id)
-                          ? ids
-                          : [...ids, channel.stream_id],
-                      );
-                    }}
-                  >
-                    {channel.invite_only ? (
-                      <Lock size={18} />
-                    ) : (
-                      <Hash size={18} />
-                    )}
-                    <span>{channel.name}</span>
-                  </button>
-                </div>
+                <ChannelNavRow
+                  channel={channel}
+                  expanded={expanded.includes(channel.stream_id)}
+                  selected={
+                    view.type === "channel" &&
+                    view.channelId === channel.stream_id
+                  }
+                  toggle={toggleChannel}
+                  open={openChannel}
+                />
                 {expanded.includes(channel.stream_id) && (
                   <div className="topics">
                     {!topics[channel.stream_id] && (
@@ -615,86 +649,22 @@ const Workspace = memo(function Workspace({
                         const unread = muted
                           ? 0
                           : session?.topicUnreads[key] || 0;
-                        const label = topic.name || "(no topic)";
-                        const openMenu = (
-                          trigger: HTMLElement,
-                          x?: number,
-                          y?: number,
-                        ) => {
-                          const r = trigger.getBoundingClientRect();
-                          setTopicMenu({
-                            channelId: channel.stream_id,
-                            topic: topic.name,
-                            trigger,
-                            x: x ?? r.left,
-                            y: y ?? r.bottom,
-                          });
-                        };
                         return (
-                          <div
+                          <TopicNavRow
                             key={topic.name}
-                            className={`topic-row ${muted ? "muted" : ""} ${unread ? "unread" : ""}`}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              openMenu(
-                                e.currentTarget.querySelector("button")!,
-                                e.clientX,
-                                e.clientY,
-                              );
-                            }}
-                          >
-                            <button
-                              className={`topic ${view.type === "channel" && view.channelId === channel.stream_id && view.topic === topic.name ? "active" : ""}`}
-                              aria-label={`${label}${muted ? ", muted" : ""}${unread ? `, ${unread} unread` : ""}`}
-                              title={
-                                mute
-                                  ? mute.until === null
-                                    ? "Muted until you unmute"
-                                    : `Muted until ${new Date(mute.until).toLocaleString()}`
-                                  : muted
-                                    ? "Muted in Zulip"
-                                    : label
-                              }
-                              onKeyDown={(e) => {
-                                if (
-                                  e.key === "ContextMenu" ||
-                                  (e.shiftKey && e.key === "F10")
-                                ) {
-                                  e.preventDefault();
-                                  openMenu(e.currentTarget);
-                                }
-                              }}
-                              onClick={() =>
-                                select({
-                                  type: "channel",
-                                  channelId: channel.stream_id,
-                                  topic: topic.name,
-                                })
-                              }
-                            >
-                              <span aria-hidden="true">↳</span>
-                              <span className="topic-name">{label}</span>
-                              {muted && (
-                                <BellOff size={12} aria-hidden="true" />
-                              )}
-                              {unread > 0 && (
-                                <span
-                                  className="thread-badge"
-                                  aria-hidden="true"
-                                >
-                                  {unread > 99 ? "99+" : unread}
-                                </span>
-                              )}
-                            </button>
-                            <button
-                              className="topic-options"
-                              aria-label={`Thread options: ${label}`}
-                              aria-haspopup="menu"
-                              onClick={(e) => openMenu(e.currentTarget)}
-                            >
-                              <MoreHorizontal size={16} />
-                            </button>
-                          </div>
+                            channelId={channel.stream_id}
+                            topic={topic.name}
+                            muted={muted}
+                            until={mute?.until}
+                            unread={unread}
+                            selected={
+                              view.type === "channel" &&
+                              view.channelId === channel.stream_id &&
+                              view.topic === topic.name
+                            }
+                            select={select}
+                            menu={setTopicMenu}
+                          />
                         );
                       })}
                     {(topics[channel.stream_id]?.length || 0) >
@@ -1017,7 +987,14 @@ const Conversation = memo(function Conversation({
       height = el.clientHeight;
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    const imageLoaded = () => {
+      if (atBottom.current) el.scrollTop = el.scrollHeight;
+    };
+    el.addEventListener("load", imageLoaded, true);
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("load", imageLoaded, true);
+    };
   }, []);
   const lastMessage = useRef<number | undefined>(undefined),
     paging = useRef(false);
@@ -1189,6 +1166,7 @@ const Conversation = memo(function Conversation({
         {view.type === "profile" ? (
           <ProfilePage
             account={account}
+            users={users}
             user={userMap.get(view.userId)}
             userId={view.userId}
             messages={messages}

@@ -1,6 +1,7 @@
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import { resolveUpload as resolvePrivateUpload } from "../uploads";
-import { sanitizeContent } from "../content";
+import { messageFragment } from "../contentCache";
+import { observeImage } from "../imageObserver";
 import type { Account } from "../types";
 export const MessageContent = memo(function MessageContent({
   html,
@@ -15,7 +16,7 @@ export const MessageContent = memo(function MessageContent({
   useLayoutEffect(() => {
     const controller = new AbortController();
     const container = ref.current!;
-    container.replaceChildren(sanitizeContent(html, account.url));
+    container.replaceChildren(messageFragment(html, account.url));
     setError("");
     const resolveUpload = (path: string) =>
       resolvePrivateUpload(account, path, controller.signal);
@@ -41,24 +42,15 @@ export const MessageContent = memo(function MessageContent({
             setError("An attachment could not be loaded.");
         });
     };
-    const observer =
-      typeof IntersectionObserver !== "undefined"
-        ? new IntersectionObserver(
-            (entries) => {
-              for (const entry of entries)
-                if (entry.isIntersecting) {
-                  observer?.unobserve(entry.target);
-                  loadImage(entry.target as HTMLImageElement);
-                }
-            },
-            { root: container.closest(".message-scroll"), rootMargin: "200px" },
-          )
-        : undefined;
-    for (const img of images) {
-      img.style.minHeight = "24px";
-      if (observer) observer.observe(img);
-      else loadImage(img);
-    }
+    const stopObserving = images.map((img) => {
+      if (!img.hasAttribute("width") || !img.hasAttribute("height")) {
+        img.style.minHeight = "120px";
+        img.style.minWidth = "120px";
+      }
+      return observeImage(img, container.closest(".message-scroll"), () =>
+        loadImage(img),
+      );
+    });
     const click = (event: MouseEvent) => {
       const link = (event.target as Element).closest<HTMLAnchorElement>(
         "a[data-upload]",
@@ -82,7 +74,7 @@ export const MessageContent = memo(function MessageContent({
     container.addEventListener("auxclick", click);
     return () => {
       controller.abort();
-      observer?.disconnect();
+      stopObserving.forEach((stop) => stop());
       container.removeEventListener("click", click);
       container.removeEventListener("auxclick", click);
       container

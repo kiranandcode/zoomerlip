@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+import { imageURL } from "../imageURL";
 export const initials = (name: string) =>
   name
     .split(/[\s.-]/)
@@ -17,14 +18,8 @@ export const Avatar = memo(function Avatar({
   org: string;
   small?: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
-  let src = "";
-  try {
-    const parsed = new URL(url || "", org);
-    if (url && ["http:", "https:"].includes(parsed.protocol)) src = parsed.href;
-  } catch {
-    /* initials fallback */
-  }
+  const [failed, setFailed] = useState("");
+  const src = imageURL(url, org);
   return (
     <span
       className={`avatar ${small ? "small" : ""}`}
@@ -36,14 +31,14 @@ export const Avatar = memo(function Avatar({
         } as React.CSSProperties
       }
     >
-      {src && !failed ? (
+      {src && failed !== src ? (
         <img
           loading="lazy"
           decoding="async"
           src={src}
           alt=""
           referrerPolicy="no-referrer"
-          onError={() => setFailed(true)}
+          onError={() => setFailed(src)}
         />
       ) : (
         initials(name)

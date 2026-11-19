@@ -6,8 +6,8 @@ android {
         applicationId = "me.kirancodes.zoomerlip"
         minSdk = 26
         targetSdk = 35
-        versionCode = (project.findProperty("zoomerlipVersionCode") as String?)?.toInt() ?: 1
-        versionName = (project.findProperty("zoomerlipVersionName") as String?) ?: "0.1.0"
+        versionCode = (project.findProperty("zoomerlipVersionCode") as String?)?.toInt() ?: 2
+        versionName = (project.findProperty("zoomerlipVersionName") as String?) ?: "0.1.1"
     }
     buildTypes { getByName("release") { isMinifyEnabled = false; isDebuggable = false } }
     compileOptions {
@@ -17,7 +17,16 @@ android {
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("web-assets"))
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
+val buildWeb by tasks.registering(Exec::class) {
+    workingDir(rootProject.file(".."))
+    inputs.files(rootProject.file("../package.json"), rootProject.file("../package-lock.json"), rootProject.file("../vite.config.ts"), rootProject.file("../index.html"), rootProject.file("../tsconfig.json"))
+    inputs.dir(rootProject.file("../src"))
+    inputs.dir(rootProject.file("../public"))
+    outputs.dir(rootProject.file("../dist"))
+    commandLine("npm", "run", "build")
+}
 val bundleWeb by tasks.registering(Sync::class) {
+    dependsOn(buildWeb)
     from(rootProject.file("../dist"))
     into(layout.buildDirectory.dir("web-assets"))
     doFirst { check(rootProject.file("../dist/index.html").exists()) { "Run npm run build first." } }

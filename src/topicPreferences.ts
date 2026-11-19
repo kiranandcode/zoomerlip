@@ -52,21 +52,18 @@ function subscribe(fn: () => void) {
 }
 const cached = new Map<
   string,
-  { revision: number; mutes: Record<string, ThreadMute> }
+  { revision: number; expires: number; mutes: Record<string, ThreadMute> }
 >();
 /** readThreadMutes, rescanning storage only after a mute change or expiry. */
 export function currentThreadMutes(accountId: string) {
   const hit = cached.get(accountId);
-  if (
-    hit &&
-    hit.revision === revision &&
-    Object.values(hit.mutes).every(
-      (m) => m.until === null || m.until > Date.now(),
-    )
-  )
+  if (hit && hit.revision === revision && hit.expires > Date.now())
     return hit.mutes;
   const mutes = readThreadMutes(accountId);
-  cached.set(accountId, { revision, mutes });
+  let expires = Infinity;
+  for (const mute of Object.values(mutes))
+    if (mute.until !== null) expires = Math.min(expires, mute.until);
+  cached.set(accountId, { revision, expires, mutes });
   return mutes;
 }
 export function readThreadMutes(accountId: string): Record<string, ThreadMute> {

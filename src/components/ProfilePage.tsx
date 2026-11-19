@@ -1,10 +1,13 @@
+import { useEffect, useState } from "react";
+import { ProfileEditor } from "./ProfileEditor";
 import { ArrowLeft, MessageCircle, Hash, UserRound } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { MessageContent } from "./MessageContent";
 import type { Account, Message, User, View } from "../types";
 export function ProfilePage({
   account,
-  user,
+  user: initialUser,
+  users,
   userId,
   messages,
   loading,
@@ -20,6 +23,7 @@ export function ProfilePage({
 }: {
   account: Account;
   user?: User;
+  users: User[];
   userId: number;
   messages: Message[];
   loading: boolean;
@@ -33,6 +37,10 @@ export function ProfilePage({
   setScope: (scope: "channels" | "all") => void;
   onSelect: (view: View) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [savedUser, setSavedUser] = useState<User>();
+  useEffect(() => setSavedUser(undefined), [initialUser]);
+  const user = savedUser || initialUser;
   const own = userId === account.userId,
     name = user?.full_name || (own ? account.email : "Member");
   const threads = new Set(
@@ -63,12 +71,25 @@ export function ProfilePage({
         <ArrowLeft size={15} />
         Conversations
       </button>
+      {editing && own && (
+        <ProfileEditor
+          account={account}
+          users={users}
+          onClose={() => setEditing(false)}
+          onSaved={setSavedUser}
+        />
+      )}
       <div className="profile-cover">
         <span className="profile-cover-mark">Z.</span>
       </div>
       <div className="profile-summary">
         <Avatar name={name} url={user?.avatar_url} org={account.url} />
         <div className="profile-actions">
+          {own && (
+            <button className="primary" onClick={() => setEditing(true)}>
+              Edit profile
+            </button>
+          )}
           {!own && (
             <button
               className="primary"

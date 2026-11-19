@@ -177,3 +177,94 @@ it("recounts a moved unread message under its new topic", () => {
   expect(model.state.topicUnreads[topicKey(9, "thread")]).toBeUndefined();
   expect(model.state.topicUnreads[topicKey(9, "moved")]).toBe(1);
 });
+
+it("updates unread counts incrementally without touching old entries for normal traffic", () => {
+  const model = new SessionModel();
+  model.register(
+    {
+      ...registration,
+      muted_users: [],
+      unread_msgs: {
+        streams: [
+          {
+            stream_id: 9,
+            topic: "thread",
+            unread_message_ids: Array.from({ length: 10000 }, (_, i) => i + 1),
+          },
+        ],
+      },
+    },
+    "Test",
+  );
+  const old = model.state;
+  model.apply(
+    [
+      {
+        id: 1,
+        type: "message",
+        message: { ...message, id: 10001 },
+        flags: ["read"],
+      },
+    ],
+    1,
+  );
+  expect(model.state).toBe(old);
+  model.apply(
+    [{ id: 2, type: "message", message: { ...message, id: 10002 }, flags: [] }],
+    1,
+  );
+  expect(model.state.unread).toBe(10001);
+  expect(old.topicUnreads[topicKey(9, "thread")]).toBe(10000);
+  model.apply(
+    [{ id: 3, type: "message", message: { ...message, id: 10002 }, flags: [] }],
+    1,
+  );
+  expect(model.state.unread).toBe(10001);
+  model.apply(
+    [
+      {
+        id: 4,
+        type: "update_message_flags",
+        flag: "read",
+        op: "add",
+        messages: [10002],
+      },
+    ],
+    1,
+  );
+  expect(model.state.unread).toBe(10000);
+});
+
+it("applies mute policies in order within one batch and preserves topic badges", () => {
+  const model = new SessionModel();
+  model.register({ ...registration, muted_users: [] }, "Test");
+  model.apply(
+    [
+      { id: 1, type: "message", message, flags: [] },
+      {
+        id: 2,
+        type: "user_topic",
+        stream_id: 9,
+        topic_name: "thread",
+        visibility_policy: 1,
+      },
+      { id: 3, type: "message", message: { ...message, id: 2 }, flags: [] },
+    ],
+    1,
+  );
+  expect(model.state.unread).toBe(0);
+  expect(model.state.topicUnreads[topicKey(9, "thread")]).toBe(2);
+  model.apply(
+    [
+      {
+        id: 4,
+        type: "user_topic",
+        stream_id: 9,
+        topic_name: "thread",
+        visibility_policy: 2,
+      },
+    ],
+    1,
+  );
+  expect(model.state.unread).toBe(2);
+});

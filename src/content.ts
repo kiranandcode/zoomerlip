@@ -1,6 +1,16 @@
 import DOMPurify from "dompurify";
+import { imageURL } from "./imageURL";
+export const MAX_MESSAGE_HTML = 256 * 1024;
 // Explicit allowlist: no forms, embeds, scripts, styles, SVG, or event handlers.
 export function sanitizeContent(html: string, org: string): DocumentFragment {
+  if (html.length > MAX_MESSAGE_HTML) {
+    const fragment = document.createDocumentFragment();
+    const notice = document.createElement("p");
+    notice.textContent =
+      "This message is too large to display. Open it in Zulip.";
+    fragment.append(notice);
+    return fragment;
+  }
   const fragment = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [
       "p",
@@ -43,6 +53,8 @@ export function sanitizeContent(html: string, org: string): DocumentFragment {
       "class",
       "colspan",
       "rowspan",
+      "width",
+      "height",
     ],
     RETURN_DOM_FRAGMENT: true,
     ALLOW_DATA_ATTR: false,
@@ -92,12 +104,9 @@ export function sanitizeContent(html: string, org: string): DocumentFragment {
         continue;
       }
       if (
-        attr === "src" &&
-        url.protocol === "http:" &&
-        !(
-          url.origin === org &&
-          ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-        )
+        url.username ||
+        url.password ||
+        (attr === "src" && !imageURL(raw, org))
       ) {
         element.removeAttribute(attr);
         continue;
@@ -110,6 +119,11 @@ export function sanitizeContent(html: string, org: string): DocumentFragment {
       } else {
         element.loading = "lazy";
         element.referrerPolicy = "no-referrer";
+        for (const dimension of ["width", "height"]) {
+          const value = Number(element.getAttribute(dimension));
+          if (!Number.isInteger(value) || value < 1 || value > 4096)
+            element.removeAttribute(dimension);
+        }
       }
       if (url.origin === org && url.pathname.startsWith("/user_uploads/")) {
         // Thumbnail routes aren't accepted by the temporary-URL API. Resolve

@@ -34,6 +34,10 @@ public final class MainActivity extends Activity {
         web = new WebView(this);
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
+        if (Build.VERSION.SDK_INT >= 33) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
+        }
         if (Build.VERSION.SDK_INT >= 30) {
             getWindow().setDecorFitsSystemWindows(false);
             root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -56,7 +60,7 @@ public final class MainActivity extends Activity {
         settings.setSupportMultipleWindows(true);
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setSafeBrowsingEnabled(true);
-        WebView.setWebContentsDebuggingEnabled(false);
+        WebView.setWebContentsDebuggingEnabled((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
         CookieManager.getInstance().setAcceptCookie(false);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         WebViewAssetLoader assets = new WebViewAssetLoader.Builder()
@@ -84,8 +88,10 @@ public final class MainActivity extends Activity {
                 if (!NavigationPolicy.localDocument(web.getUrl())) return false;
                 if (fileSelection != null) fileSelection.onReceiveValue(null);
                 fileSelection = callback;
+                boolean image = Arrays.stream(params.getAcceptTypes()).anyMatch(type -> type.startsWith("image/"));
+                String[] types = image ? new String[]{"image/png", "image/jpeg", "image/webp"} : new String[]{"application/json", "text/plain", "application/octet-stream"};
                 Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
-                    .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/json", "text/plain", "application/octet-stream"});
+                    .putExtra(Intent.EXTRA_MIME_TYPES, types);
                 try { startActivityForResult(intent, PICK_THEME); return true; }
                 catch (ActivityNotFoundException e) { fileSelection = null; callback.onReceiveValue(null); return true; }
             }
@@ -166,9 +172,10 @@ public final class MainActivity extends Activity {
             }
         }
     }
-    @Override public void onBackPressed() {
+    @Override public void onBackPressed() { handleBack(); }
+    private void handleBack() {
         web.evaluateJavascript("(() => { const d=document.querySelector('dialog[open]'); if(d){d.dispatchEvent(new Event('cancel',{cancelable:true}));return true;} const m=document.querySelector('[role=menu]'); if(m){m.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return true;} const n=document.querySelector('.sidebar.mobile-open [aria-label=\"Close channels\"]'); if(n && n.getClientRects().length){n.click();return true;} const p=document.querySelector('.profile-back'); if(p){p.click();return true;} if(document.querySelector('.composer')){window.dispatchEvent(new Event('zoomerlip-home'));return true;} return false; })()", result -> {
-            if (!"true".equals(result)) { if (web.canGoBack()) web.goBack(); else super.onBackPressed(); }
+            if (!"true".equals(result)) { if (web.canGoBack()) web.goBack(); else moveTaskToBack(true); }
         });
     }
     @Override protected void onPause() { web.onPause(); super.onPause(); }

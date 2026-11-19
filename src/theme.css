@@ -1760,3 +1760,140 @@ html {
     z-index: 9;
   }
 }
+
+.org-host {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 640px),
+  (max-width: 900px) and (pointer: coarse),
+  (max-height: 500px) and (pointer: coarse) {
+  .app-shell .org-rail {
+    display: none;
+  }
+  .app-shell.navigation-open .org-rail {
+    display: flex;
+    position: fixed;
+    z-index: 11;
+    top: env(safe-area-inset-top);
+    bottom: env(safe-area-inset-bottom);
+    left: env(safe-area-inset-left);
+    width: 60px;
+  }
+  .sidebar {
+    display: none;
+    position: fixed;
+    z-index: 10;
+    top: env(safe-area-inset-top);
+    bottom: env(safe-area-inset-bottom);
+    left: calc(60px + env(safe-area-inset-left));
+    width: min(
+      245px,
+      calc(
+        100vw - 84px - env(safe-area-inset-left) - env(safe-area-inset-right)
+      )
+    );
+  }
+  .sidebar.mobile-open {
+    display: flex;
+  }
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 9;
+    background: #080a1090;
+  }
+  .mobile-menu,
+  .mobile-close {
+    display: inline-flex;
+  }
+  .members,
+  .members-toggle {
+    display: none;
+  }
+  .header-description {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .toast {
+    left: 12px;
+    right: 12px;
+    top: calc(12px + env(safe-area-inset-top));
+    bottom: auto;
+  }
+}
+@media (pointer: coarse) {
+  .icon-button,
+  .message-actions button,
+  .emoji-picker button,
+  .topic-options,
+  .touch-actions,
+  .rail-button,
+  .expand {
+    min-width: 48px;
+    min-height: 48px;
+  }
+  .reactions button,
+  .nav-row,
+  .channel-name,
+  .topic {
+    min-height: 48px;
+  }
+}
+
+.profile-editor {
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+}
+.profile-editor::backdrop {
+  background: #0009;
+}
+.profile-editor header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.profile-editor fieldset {
+  border: 0;
+  padding: 0;
+  margin: 20px 0;
+}
+.profile-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+.profile-editor :is(input, textarea, select) {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  background: var(--field);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.profile-editor textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+.profile-editor small {
+  color: var(--muted);
+}
+.profile-editor select[multiple] {
+  min-height: 120px;
+}

@@ -21,6 +21,7 @@ export function useSession(account: Account, _active: boolean): Session {
       probe = true,
       finished = false;
     const status = (value: string, error = "") => {
+      if (model.state.status === value && model.state.error === error) return;
       model.state = { ...model.state, status: value, error };
       setState(model.state);
     };
@@ -107,11 +108,10 @@ export function useSession(account: Account, _active: boolean): Session {
                 : 90000;
             model.register(data, account.name);
             cache.unlock();
-            cache.purgeStreams(
-              previous.filter(
-                (id) => !model.state.channels.some((c) => c.stream_id === id),
-              ),
+            const registered = new Set(
+              model.state.channels.map((c) => c.stream_id),
             );
+            cache.purgeStreams(previous.filter((id) => !registered.has(id)));
             cache.allowStreams(model.state.channels.map((c) => c.stream_id));
             cache.setMutedUsers(model.state.mutedUsers);
             cache.invalidate();
@@ -142,13 +142,13 @@ export function useSession(account: Account, _active: boolean): Session {
           const before = model.state,
             previous = before.channels.map((c) => c.stream_id);
           const next = model.apply(events, account.userId);
-          cache.purgeStreams(
-            previous.filter(
-              (id) => !next.channels.some((c) => c.stream_id === id),
-            ),
-          );
-          cache.allowStreams(next.channels.map((c) => c.stream_id));
-          cache.setMutedUsers(next.mutedUsers);
+          if (next.channels !== before.channels) {
+            const subscribed = new Set(next.channels.map((c) => c.stream_id));
+            cache.purgeStreams(previous.filter((id) => !subscribed.has(id)));
+            cache.allowStreams([...subscribed]);
+          }
+          if (next.mutedUsers !== before.mutedUsers)
+            cache.setMutedUsers(next.mutedUsers);
           cache.events(events.filter((e) => e.type !== "heartbeat"));
           if (events.length) last = events.at(-1)!.id;
           // Publish only real changes: every new state re-renders the whole app.

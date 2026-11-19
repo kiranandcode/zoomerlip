@@ -75,6 +75,50 @@ export type Registration = {
 export class SessionModel {
   state: Session = initialSession;
   private unread = new Map<number, Unread>();
+  private total = 0;
+  private topicCounts: Record<string, number> = {};
+  private countsDirty = false;
+  private muted = new Set<number>();
+  private mutedTopics = new Set<string>();
+  private unmutedTopics = new Set<string>();
+  private mutedStreams = new Set<number>();
+  private adjust(m: Unread, delta: number) {
+    if (m.stream !== undefined) {
+      const key = (m.key ??= topicKey(m.stream, m.topic || ""));
+      const count = (this.topicCounts[key] || 0) + delta;
+      if (count) this.topicCounts[key] = count;
+      else delete this.topicCounts[key];
+      if (
+        this.mutedTopics.has(key) ||
+        (this.mutedStreams.has(m.stream) && !this.unmutedTopics.has(key))
+      )
+        return;
+    }
+    this.total += delta;
+  }
+  private removeUnread(id: number) {
+    const old = this.unread.get(id);
+    if (!old) return;
+    this.adjust(old, -1);
+    this.unread.delete(id);
+    this.countsDirty = true;
+  }
+  private addUnread(id: number, message: Unread) {
+    this.removeUnread(id);
+    if (message.sender !== undefined && this.muted.has(message.sender)) return;
+    this.unread.set(id, message);
+    this.adjust(message, 1);
+    this.countsDirty = true;
+  }
+  private publishCounts() {
+    if (!this.countsDirty) return;
+    this.state = {
+      ...this.state,
+      unread: this.total,
+      topicUnreads: { ...this.topicCounts },
+    };
+    this.countsDirty = false;
+  }
   register(data: Registration, name: string) {
     this.unread.clear();
     for (const group of data.unread_msgs?.streams || [])
@@ -135,7 +179,7 @@ export class SessionModel {
             channels: this.state.channels.filter((c) => !ids.has(c.stream_id)),
           };
           for (const [id, m] of this.unread)
-            if (m.stream && ids.has(m.stream)) this.unread.delete(id);
+            if (m.stream && ids.has(m.stream)) this.removeUnread(id);
           changed = true;
         }
         if (e.op === "update" && typeof e.property === "string") {
@@ -169,6 +213,9 @@ export class SessionModel {
             ...this.state,
             channels: this.state.channels.filter((c) => !ids.has(c.stream_id)),
           };
+          for (const [id, message] of this.unread)
+            if (message.stream !== undefined && ids.has(message.stream))
+              this.removeUnread(id);
           changed = true;
         }
       } else if (e.type === "realm_user") {
@@ -226,9 +273,9 @@ export class SessionModel {
         if (
           !flags.includes("read") &&
           m.sender_id !== me &&
-          !this.state.mutedUsers.includes(m.sender_id)
+          !this.muted.has(m.sender_id)
         )
-          this.unread.set(m.id, {
+          this.addUnread(m.id, {
             sender: m.sender_id,
             stream: m.stream_id,
             topic: m.subject,
@@ -249,12 +296,16 @@ export class SessionModel {
             ],
           };
         }
-        changed = true;
+        changed ||= this.countsDirty || m.type === "private";
       } else if (e.type === "update_message_flags" && e.flag === "read") {
-        if (e.op === "add" && e.all) this.unread.clear();
-        else
+        if (e.op === "add" && e.all) {
+          this.unread.clear();
+          this.total = 0;
+          this.topicCounts = {};
+          this.countsDirty = true;
+        } else
           for (const id of (e.messages || []) as number[]) {
-            if (e.op === "add") this.unread.delete(id);
+            if (e.op === "add") this.removeUnread(id);
             else {
               const d = (
                 (e.message_details || {}) as Record<
@@ -263,7 +314,7 @@ export class SessionModel {
                 >
               )[id];
               if (d)
-                this.unread.set(id, {
+                this.addUnread(id, {
                   stream: d.stream_id,
                   topic: d.topic,
                   sender: d.user_ids?.length === 1 ? d.user_ids[0] : undefined,
@@ -273,7 +324,7 @@ export class SessionModel {
         changed = true;
       } else if (e.type === "delete_message") {
         for (const id of (e.message_ids || [e.message_id]) as number[])
-          this.unread.delete(id);
+          this.removeUnread(id);
         changed = true;
       } else if (
         e.type === "update_message" &&
@@ -282,7 +333,7 @@ export class SessionModel {
         for (const id of (e.message_ids || [e.message_id]) as number[]) {
           const m = this.unread.get(id);
           if (m)
-            this.unread.set(id, {
+            this.addUnread(id, {
               ...m,
               key: undefined,
               ...(typeof e.subject === "string" ? { topic: e.subject } : {}),
@@ -293,50 +344,63 @@ export class SessionModel {
         }
         changed = true;
       }
+      // Only policy/directory changes require walking existing unread IDs.
+      if (
+        ["muted_users", "subscription", "stream", "user_topic"].includes(e.type)
+      )
+        this.count();
     }
-    if (changed) this.count();
+    if (changed) this.publishCounts();
     else this.state = before;
     return this.state;
   }
   private count() {
-    const muted = new Set(this.state.mutedUsers),
-      topics = new Set(this.state.mutedTopics),
-      unmuted = new Set(this.state.unmutedTopics),
-      mutedStreams = new Set(
-        this.state.channels.filter((c) => c.is_muted).map((c) => c.stream_id),
-      );
-    let unread = 0;
-    const topicUnreads: Record<string, number> = {};
-    for (const [id, m] of this.unread) {
-      if (m.sender !== undefined && muted.has(m.sender)) {
+    this.muted = new Set(this.state.mutedUsers);
+    this.mutedTopics = new Set(this.state.mutedTopics);
+    this.unmutedTopics = new Set(this.state.unmutedTopics);
+    this.mutedStreams = new Set(
+      this.state.channels.filter((c) => c.is_muted).map((c) => c.stream_id),
+    );
+    this.total = 0;
+    this.topicCounts = {};
+    for (const [id, message] of this.unread) {
+      if (message.sender !== undefined && this.muted.has(message.sender)) {
         this.unread.delete(id);
         continue;
       }
-      if (m.stream !== undefined) {
-        const key = (m.key ??= topicKey(m.stream, m.topic || ""));
-        topicUnreads[key] = (topicUnreads[key] || 0) + 1;
-        if (
-          topics.has(key) ||
-          (mutedStreams.has(m.stream) && !unmuted.has(key))
-        )
-          continue;
-      }
-      unread++;
+      this.adjust(message, 1);
     }
-    this.state = { ...this.state, unread, topicUnreads };
+    this.countsDirty = true;
+    this.publishCounts();
   }
 }
 
+const topicIndexes = new WeakMap<string[], Set<string>>();
+const channelIndexes = new WeakMap<Channel[], Set<number>>();
+function topicIndex(topics: string[]) {
+  let index = topicIndexes.get(topics);
+  if (!index) {
+    index = new Set(topics);
+    topicIndexes.set(topics, index);
+  }
+  return index;
+}
 export function serverMutesTopic(
   session: Session | undefined,
   streamId: number,
   topic: string,
 ) {
+  if (!session) return false;
+  let streams = channelIndexes.get(session.channels);
+  if (!streams) {
+    streams = new Set(
+      session.channels.filter((c) => c.is_muted).map((c) => c.stream_id),
+    );
+    channelIndexes.set(session.channels, streams);
+  }
   const key = topicKey(streamId, topic);
   return (
-    !!session &&
-    (session.mutedTopics.includes(key) ||
-      (!!session.channels.find((c) => c.stream_id === streamId)?.is_muted &&
-        !session.unmutedTopics.includes(key)))
+    topicIndex(session.mutedTopics).has(key) ||
+    (streams.has(streamId) && !topicIndex(session.unmutedTopics).has(key))
   );
 }

@@ -1,3 +1,4 @@
+import { clearContentCache } from "./contentCache";
 import { ApiError, getFeatureLevel, narrow, request } from "./api";
 import type {
   Account,
@@ -910,6 +911,7 @@ export class OrgCache {
       [...next].every((id) => this.mutedUsers.has(id))
     )
       return;
+    clearContentCache(this.account.url);
     this.mutedUsers = next;
     this.cancelRequests();
     for (const e of [...this.entries.values()]) {
@@ -928,6 +930,7 @@ export class OrgCache {
   purgeStreams(ids: number[]) {
     const removed = new Set(ids);
     if (!removed.size) return;
+    clearContentCache(this.account.url);
     for (const id of removed) {
       this.blockedStreams.add(id);
       this.topicData.delete(id);
@@ -959,6 +962,7 @@ export class OrgCache {
     if (changed) this.notifyNavigation();
   }
   lock() {
+    clearContentCache(this.account.url);
     this.locked = true;
     this.cancelRequests();
     this.topicData.clear();
