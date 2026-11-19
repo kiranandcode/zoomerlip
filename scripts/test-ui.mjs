@@ -334,7 +334,11 @@ try {
     .tap();
   const row = phone.locator(".message").last();
   await row.scrollIntoViewIfNeeded();
-  await row.tap();
+  // Tap the message body: the row's centre can land on the sender's name,
+  // which opens their profile instead of leaving the conversation in place.
+  await row.locator(".message-content").tap();
+  await expect(phone.locator(".profile-page")).toHaveCount(0);
+  await expect(phone.locator(".message")).toHaveCount(300);
   await expect(row.locator(".message-actions")).toBeHidden();
   await row.getByRole("button", { name: "Message actions" }).tap();
   await expect(row.locator(".message-actions")).toBeVisible();
