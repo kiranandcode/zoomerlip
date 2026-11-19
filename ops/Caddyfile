@@ -22,7 +22,9 @@ zoomerlip.kirancodes.me {
 		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: http://localhost:* http://127.0.0.1:*; font-src 'self'; connect-src https: http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 	}
 	@private path /.git* /.env* /local/* /ops/* /node_modules/* /src/*
-	respond @private 404
+	handle @private {
+		respond 404
+	}
 	handle /assets/* {
 		header Cache-Control "public, max-age=31536000, immutable"
 		file_server
