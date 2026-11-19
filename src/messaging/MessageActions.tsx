@@ -1,3 +1,5 @@
+import { ReminderForm } from "./ReminderForm";
+import { messagingCapabilities } from "./capabilities";
 import { useEffect, useRef, useState } from "react";
 import { request } from "../api";
 import { getCache } from "../cache";
@@ -130,7 +132,9 @@ export function MessageActions({
               {message.flags?.includes("starred") ? "Unstar" : "Star"}
             </button>
             <button
-              disabled={busy}
+              disabled={
+                busy || messagingCapabilities(account.id).featureLevel < 121
+              }
               onClick={() => void run(() => flag("read", "remove"))}
             >
               Mark unread
@@ -239,6 +243,10 @@ export function MessageActions({
             </div>
           )}
           <p role="status">{busy ? "Working…" : status}</p>
+          {messagingCapabilities(account.id).featureLevel < 121 && (
+            <p>Mark unread requires feature level 121.</p>
+          )}
+          <ReminderForm account={account} messageId={message.id} />
           {history && (
             <section aria-label="Edit history">
               {!history.length && <p>No edit history.</p>}

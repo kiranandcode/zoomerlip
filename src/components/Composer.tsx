@@ -1,3 +1,5 @@
+import { ProductivityPanel } from "../messaging/ProductivityPanel";
+import type { ProductivityKind } from "../messaging/productivity";
 import { quoteMessage } from "../messaging/actions";
 import { useCompletion } from "../messaging/useCompletion";
 import { Formatting } from "../messaging/Formatting";
@@ -72,6 +74,7 @@ export const Composer = memo(
     const [text, setText] = useState(initial?.text ?? saved.text),
       [topic, setTopic] = useState(initial?.topic ?? saved.topic),
       [showDrafts, setShowDrafts] = useState(false),
+      [productivity, setProductivity] = useState<ProductivityKind | null>(null),
       [sending, setSending] = useState(false);
     const input = useRef<HTMLTextAreaElement>(null),
       alive = useRef(true),
@@ -160,6 +163,7 @@ export const Composer = memo(
           operation.current.abort();
           setText("");
           setShowDrafts(false);
+          setProductivity(null);
           saved.text = "";
         }
       };
@@ -282,6 +286,21 @@ export const Composer = memo(
         </div>
         <div className="messaging-tools">
           {attachments.button}
+          <button
+            type="button"
+            onClick={() => setProductivity("scheduled_messages")}
+          >
+            Scheduled messages
+          </button>
+          <button
+            type="button"
+            onClick={() => setProductivity("saved_snippets")}
+          >
+            Snippets
+          </button>
+          <button type="button" onClick={() => setProductivity("reminders")}>
+            Reminders
+          </button>
           <button type="button" onClick={() => setShowDrafts(!showDrafts)}>
             Drafts
           </button>
@@ -291,6 +310,20 @@ export const Composer = memo(
             account={account}
             onRestore={restore}
             onClose={() => setShowDrafts(false)}
+          />
+        )}
+        {productivity && (
+          <ProductivityPanel
+            key={productivity}
+            account={account}
+            kind={productivity}
+            view={view}
+            text={text}
+            topic={topic}
+            onInsert={(value) =>
+              changeText(`${saved.text}${saved.text ? "\n" : ""}${value}`)
+            }
+            onClose={() => setProductivity(null)}
           />
         )}
         {attachments.status}
