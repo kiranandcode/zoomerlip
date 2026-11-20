@@ -39,3 +39,39 @@
 .live-settings small {
   display: block;
 }
+
+.avatar {
+  position: relative;
+}
+.presence-dot {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  right: 1px;
+  bottom: 1px;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  background: var(--muted);
+}
+.presence-dot[data-presence="online"] {
+  background: #32b879;
+}
+.presence-dot[data-presence="idle"] {
+  background: #e4ab46;
+}
+.presence-dot[data-presence="offline"],
+.presence-dot[data-presence="invisible"] {
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--muted);
+}
+.presence-dot[data-presence="presence-unavailable"] {
+  border-style: dotted;
+}
+.member .presence-status {
+  display: inline;
+}
+.member small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

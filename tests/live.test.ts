@@ -1,5 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { LiveStore, conversationKey } from "../src/live/store";
+import {
+  LiveStore,
+  conversationKey,
+  availabilityLabel,
+  presenceLabel,
+} from "../src/live/store";
 import { TypingSender } from "../src/live/typing";
 import type { Account } from "../src/types";
 const account = { id: "a", userId: 1 } as Account;
@@ -100,4 +105,35 @@ it("handles website/legacy and modern presence events without rolling newer even
   );
   expect(store.state.presences[3].idle_timestamp).toBe(1050);
   expect(store.state.presences[2].active_timestamp).toBe(1100);
+});
+
+it("notifies when active presence expires before a newer idle timestamp", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000_000);
+  const store = new LiveStore();
+  store.register({
+    zulip_feature_level: 300,
+    server_presence_offline_threshold_seconds: 140,
+  });
+  expect(availabilityLabel(store.state, 2, 1)).toBe("Presence unavailable");
+  store.mergePresence({ 2: { active_timestamp: 900, idle_timestamp: 950 } });
+  expect(presenceLabel(store.state, 2)).toBe("Online");
+  const notify = vi.fn();
+  store.subscribe(notify);
+  vi.setSystemTime(1_040_000);
+  store.expire();
+  expect(notify).toHaveBeenCalledTimes(1);
+  expect(presenceLabel(store.state, 2)).toBe("Idle");
+  store.expire();
+  expect(notify).toHaveBeenCalledTimes(1);
+  vi.setSystemTime(1_090_000);
+  store.expire();
+  expect(notify).toHaveBeenCalledTimes(2);
+  expect(presenceLabel(store.state, 2)).toBe("Offline");
+  store.update({ settings: { presence_enabled: false } });
+  expect(availabilityLabel(store.state, 1, 1)).toBe("Invisible");
+  store.update({ error: "Unavailable" });
+  expect(availabilityLabel(store.state, 2, 1)).toBe("Presence unavailable");
+  store.clear();
+  expect(availabilityLabel(store.state, 2, 1)).toBe("Presence unavailable");
 });

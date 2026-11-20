@@ -839,6 +839,8 @@ const Workspace = memo(function Workspace({
                 small
                 name={user.full_name}
                 url={user.avatar_url}
+                account={account}
+                userId={user.user_id}
                 org={account.url}
               />
               <span>
@@ -930,6 +932,8 @@ const Workspace = memo(function Workspace({
             small
             name={me?.full_name || account.email}
             url={me?.avatar_url}
+            account={account}
+            userId={account.userId}
             org={account.url}
           />
           <button
@@ -1593,6 +1597,12 @@ const Conversation = memo(function Conversation({
                           name={name}
                           org={account.url}
                           url={userMap.get(ids[0])?.avatar_url}
+                          account={account}
+                          userId={
+                            ids.length === 1 && !userMap.get(ids[0])?.is_bot
+                              ? ids[0]
+                              : undefined
+                          }
                         />
                         <span>
                           <strong>{name}</strong>

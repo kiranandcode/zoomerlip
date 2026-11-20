@@ -13,6 +13,7 @@ export type LiveState = {
   names: Record<string, string>;
   followed: string[];
   ready: boolean;
+  presenceReady: boolean;
   featureLevel: number;
   typing: { key: string; user: number; until: number }[];
   presences: Record<string, Presence>;
@@ -29,6 +30,7 @@ export const emptyLive: LiveState = {
   names: {},
   followed: [],
   ready: false,
+  presenceReady: false,
   featureLevel: 0,
   typing: [],
   presences: {},
@@ -133,7 +135,12 @@ export class LiveStore {
         ["remove", "delete"].includes(String(e.op))
       ) {
         this.generation++;
-        this.update({ typing: [], presences: {}, statuses: {} });
+        this.update({
+          typing: [],
+          presences: {},
+          statuses: {},
+          presenceReady: false,
+        });
       } else if (e.type === "typing") {
         const sender = e.sender as { user_id?: number } | undefined;
         if (!sender?.user_id || sender.user_id === account.userId) continue;
@@ -234,22 +241,23 @@ export class LiveStore {
       }
       presences[id] = merged;
     }
-    this.update({ presences: boundedRecord(presences) });
+    this.update({ presences: boundedRecord(presences), presenceReady: true });
   }
   expire(now = Date.now()) {
     const typing = this.state.typing.filter((t) => t.until > now);
-    const presences = Object.fromEntries(
-      Object.entries(this.state.presences).filter(
-        ([, p]) =>
-          Math.max(p.active_timestamp || 0, p.idle_timestamp || 0) * 1000 +
-            this.state.offlineMs >
-          now,
-      ),
-    );
-    if (
-      typing.length !== this.state.typing.length ||
-      Object.keys(presences).length !== Object.keys(this.state.presences).length
-    )
+    let changed = false;
+    const presences: Record<string, Presence> = {};
+    for (const [id, p] of Object.entries(this.state.presences)) {
+      const fresh: Presence = {};
+      for (const field of ["active_timestamp", "idle_timestamp"] as const) {
+        if (p[field] === undefined) continue;
+        if (p[field]! * 1000 + this.state.offlineMs > now)
+          fresh[field] = p[field];
+        else changed = true;
+      }
+      if (Object.keys(fresh).length) presences[id] = fresh;
+    }
+    if (typing.length !== this.state.typing.length || changed)
       this.update({ typing, presences });
   }
 }
@@ -320,4 +328,17 @@ export function presenceLabel(
     return "Online";
   if ((p?.idle_timestamp || 0) * 1000 + state.offlineMs > now) return "Idle";
   return "Offline";
+}
+export function availabilityLabel(state: LiveState, user: number, me: number) {
+  if (!state.ready || !state.presenceReady || state.error)
+    return "Presence unavailable";
+  if (user === me && state.settings.presence_enabled === false)
+    return "Invisible";
+  return presenceLabel(state, user);
+}
+/** A primitive snapshot keeps typing/status events from rerendering avatars. */
+export function useAvailability(account: Account, user: number) {
+  const store = liveStore(account.id);
+  const snapshot = () => availabilityLabel(store.state, user, account.userId);
+  return useSyncExternalStore(store.subscribe, snapshot, snapshot);
 }

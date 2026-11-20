@@ -1,7 +1,31 @@
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { request } from "../api";
 import type { Account } from "../types";
-import { liveStore, presenceLabel, useLive } from "./store";
+import {
+  availabilityLabel,
+  liveStore,
+  useAvailability,
+  useLive,
+} from "./store";
+
+export function PresenceDot({
+  account,
+  userId,
+}: {
+  account: Account;
+  userId: number;
+}) {
+  const label = useAvailability(account, userId);
+  return (
+    <span
+      className="presence-dot"
+      data-presence={label.toLowerCase().replaceAll(" ", "-")}
+      role="img"
+      aria-label={label}
+      title={label}
+    />
+  );
+}
 
 function statusEmoji(code?: string, type?: string) {
   if (
@@ -23,18 +47,22 @@ export function PresenceStatus({
   account: Account;
   userId: number;
 }) {
-  const state = useLive(account),
-    status = state.statuses[userId];
+  const store = liveStore(account.id);
+  const snapshot = () => {
+    const state = store.state,
+      status = state.statuses[userId];
+    return (
+      availabilityLabel(state, userId, account.userId) +
+      (status?.emoji_name
+        ? ` · ${statusEmoji(status.emoji_code, status.reaction_type) || `:${status.emoji_name}:`}`
+        : "") +
+      (status?.status_text ? ` · ${status.status_text}` : "")
+    );
+  };
+  const label = useSyncExternalStore(store.subscribe, snapshot, snapshot);
   return (
-    <span className="presence-status" title={status?.status_text}>
-      {state.ready
-        ? userId === account.userId && state.settings.presence_enabled === false
-          ? "Invisible"
-          : presenceLabel(state, userId)
-        : "Presence unavailable"}
-      {status?.emoji_name &&
-        ` · ${statusEmoji(status.emoji_code, status.reaction_type) || `:${status.emoji_name}:`}`}
-      {status?.status_text && ` · ${status.status_text}`}
+    <span className="presence-status" title={label}>
+      {label}
     </span>
   );
 }

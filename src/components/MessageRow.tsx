@@ -254,6 +254,8 @@ export const MessageRow = memo(function MessageRow({
             name={message.sender_full_name}
             url={message.avatar_url}
             org={account.url}
+            account={account}
+            userId={message.sender_id}
           />
         ) : (
           <time className="group-time">

@@ -1,5 +1,7 @@
 import { memo, useState } from "react";
 import { imageURL } from "../imageURL";
+import type { Account } from "../types";
+import { PresenceDot } from "../live/PresenceStatus";
 export const initials = (name: string) =>
   name
     .split(/[\s.-]/)
@@ -12,11 +14,15 @@ export const Avatar = memo(function Avatar({
   url,
   org,
   small = false,
+  account,
+  userId,
 }: {
   name: string;
   url?: string | null;
   org: string;
   small?: boolean;
+  account?: Account;
+  userId?: number;
 }) {
   const [failed, setFailed] = useState("");
   const src = imageURL(url, org);
@@ -42,6 +48,9 @@ export const Avatar = memo(function Avatar({
         />
       ) : (
         initials(name)
+      )}
+      {account && userId !== undefined && (
+        <PresenceDot account={account} userId={userId} />
       )}
     </span>
   );

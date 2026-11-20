@@ -85,7 +85,13 @@ export function ProfilePage({
         <span className="profile-cover-mark">Z.</span>
       </div>
       <div className="profile-summary">
-        <Avatar name={name} url={user?.avatar_url} org={account.url} />
+        <Avatar
+          name={name}
+          url={user?.avatar_url}
+          org={account.url}
+          account={account}
+          userId={user?.is_bot ? undefined : userId}
+        />
         <div className="profile-actions">
           {own && (
             <button className="primary" onClick={() => setEditing(true)}>

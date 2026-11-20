@@ -207,6 +207,21 @@ try {
   await page.goto(url);
   await openChannel(page);
   expect(await page.evaluate(() => window.permissionRequests)).toBe(0);
+  const member = page.locator('[data-member-id="2"]');
+  const avatar = page.locator(".message .presence-dot");
+  await expect(member.locator(".presence-status")).toContainText("Online");
+  await expect(member.locator(".presence-status")).toContainText("Focusing");
+  await expect(avatar).toHaveAttribute("aria-label", "Online");
+  await emit(other.url, [
+    { type: "user_status", user_id: 2, status_text: "Other account only" },
+  ]);
+  await expect(member).not.toContainText("Other account only");
+  await emit(account.url, [
+    { type: "user_status", user_id: 2, status_text: "Reading" },
+  ]);
+  await expect(member.locator(".presence-status")).toContainText("Reading");
+  await expect(avatar).toHaveAttribute("aria-label", "Online");
+
   const composer = page.getByRole("textbox", { name: "Message", exact: true });
   await composer.fill("typing fixture");
   await expect
@@ -384,7 +399,7 @@ try {
   ).toBe(true);
   expect(errors).toEqual([]);
   console.log(
-    "Notification browser fixtures passed: typing, isolation, expiry, status, receipts, explicit permission, private previews, two-tab deduplication, read suppression, account-aware navigation and mobile width.",
+    "Notification browser fixtures passed: avatar/member presence, live status and account isolation; typing, isolation, expiry, status, receipts, explicit permission, private previews, two-tab deduplication, read suppression, account-aware navigation and mobile width.",
   );
 } finally {
   for (const q of queues.values()) q.waiting?.();

@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type { Account, User, View } from "../types";
 import { Avatar } from "./Avatar";
+import { PresenceStatus } from "../live/PresenceStatus";
 function roleLabel(user: User) {
   const role = (user as User & { role?: number }).role;
   return role === 100
@@ -144,6 +145,8 @@ export const MemberList = memo(function MemberList({
                   name={user.full_name}
                   url={user.avatar_url}
                   org={account.url}
+                  account={account}
+                  userId={user.user_id}
                   small
                 />
                 <span>
@@ -152,6 +155,8 @@ export const MemberList = memo(function MemberList({
                     {user.user_id === account.userId
                       ? `You · ${roleLabel(user)}`
                       : roleLabel(user)}
+                    {" · "}
+                    <PresenceStatus account={account} userId={user.user_id} />
                   </small>
                 </span>
               </button>
