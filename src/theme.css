@@ -1670,6 +1670,38 @@ button:hover {
   color: var(--text);
   font-weight: 700;
 }
+.dm-nav-row {
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+.dm-nav-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dm-sidebar .active {
+  background: var(--hover);
+  color: var(--text);
+}
+.unread-inbox .search-results {
+  max-width: 850px;
+  margin: 0 auto;
+}
+.unread-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.unread-toolbar [role="group"] {
+  display: flex;
+  gap: 4px;
+}
+.unread-toolbar button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 .topic-options:hover {
   background: var(--hover);
   color: var(--text);

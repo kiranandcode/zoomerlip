@@ -2,6 +2,7 @@ import { useNotificationNavigation } from "./notifications/navigation";
 import { trackViewport } from "./viewport";
 import { navigationUnreads, prioritizeUnreadTopics } from "./unreadNavigation";
 import { OrgIcon } from "./components/OrgIcon";
+import { DmSidebar } from "./components/DmSidebar";
 import type { NotificationTarget } from "./notifications/navigation";
 import { destinationKey, draftFor, saveDraft } from "./messaging/drafts";
 import type { Destination } from "./messaging/drafts";
@@ -32,6 +33,7 @@ import {
   Users,
   X,
   ArrowDown,
+  ArrowLeft,
   UserRound,
   Palette,
   FileText,
@@ -255,7 +257,11 @@ export default function App() {
               style={
                 { "--org-hue": String(150 + i * 75) } as React.CSSProperties
               }
-              onClick={() => setActiveId(a.id)}
+              onClick={() => {
+                setActiveId(a.id);
+                if (a.id === active.id)
+                  window.dispatchEvent(new Event("zoomerlip-channels"));
+              }}
             >
               <OrgIcon
                 name={sessions[a.id]?.name || a.name}
@@ -453,10 +459,18 @@ const Workspace = memo(function Workspace({
   const [showTools, setShowTools] = useState(false);
   const [topicLimits, setTopicLimits] = useState<Record<number, number>>({});
   const [view, setView] = useState<View>({ type: "home" });
+  const [navigationMode, setNavigationMode] = useState<"channels" | "dms">(
+    "channels",
+  );
+  const [openedDms, setOpenedDms] = useState<number[][]>([]);
+  const lastChannel = useRef<View>({ type: "home" });
   useEffect(() => {
     if (notificationTarget?.accountId === account.id) {
       setPanel(null);
       setView(notificationTarget.view);
+      setNavigationMode(
+        notificationTarget.view.type === "dm" ? "dms" : "channels",
+      );
       setShowNav(false);
     }
   }, [notificationTarget, account.id, setShowNav]);
@@ -627,10 +641,22 @@ const Workspace = memo(function Workspace({
     const home = () => {
       setPanel(null);
       setView({ type: "home" });
+      setNavigationMode("dms");
+      setFilter("");
       setShowNav(false);
     };
+    const channels = () => {
+      setPanel(null);
+      setNavigationMode("channels");
+      setFilter("");
+      setView(lastChannel.current);
+    };
     window.addEventListener("zoomerlip-home", home);
-    return () => window.removeEventListener("zoomerlip-home", home);
+    window.addEventListener("zoomerlip-channels", channels);
+    return () => {
+      window.removeEventListener("zoomerlip-home", home);
+      window.removeEventListener("zoomerlip-channels", channels);
+    };
   }, []);
   const expandedKey = expanded.join(",");
   useEffect(() => {
@@ -661,6 +687,22 @@ const Workspace = memo(function Workspace({
     (next: View) => {
       setPanel(null);
       setView(next);
+      if (next.type === "home" || next.type === "dm") {
+        setNavigationMode("dms");
+        setFilter("");
+        if (next.type === "dm")
+          setOpenedDms((items) =>
+            [
+              next.userIds,
+              ...items.filter(
+                (ids) => ids.join(",") !== next.userIds.join(","),
+              ),
+            ].slice(0, 60),
+          );
+      } else if (next.type === "channel") {
+        setNavigationMode("channels");
+        lastChannel.current = next;
+      }
       setChannelMenu(null);
       setShowNav(false);
     },
@@ -746,7 +788,11 @@ const Workspace = memo(function Workspace({
           <button
             ref={navClose}
             className="icon-button mobile-close"
-            aria-label="Close channels"
+            aria-label={
+              navigationMode === "dms"
+                ? "Close conversations"
+                : "Close channels"
+            }
             onClick={closeNav}
           >
             <X size={20} />
@@ -755,8 +801,16 @@ const Workspace = memo(function Workspace({
         <div className="nav-search">
           <Search size={15} />
           <input
-            aria-label="Find channels or people"
-            placeholder="Find channels or people"
+            aria-label={
+              navigationMode === "dms"
+                ? "Find or start a conversation"
+                : "Find channels or people"
+            }
+            placeholder={
+              navigationMode === "dms"
+                ? "Find or start a conversation"
+                : "Find channels or people"
+            }
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
@@ -775,140 +829,156 @@ const Workspace = memo(function Workspace({
               </span>
             </button>
           )}
-          <div className="section-label">
-            YOUR CHANNELS <span>{channels.length}</span>
-          </div>
-          {channels
-            .filter((c) => c.name.toLowerCase().includes(search))
-            .map((channel) => (
-              <div key={channel.stream_id}>
-                <ChannelNavRow
-                  channel={channel}
-                  unread={unreadNavigation.channels[channel.stream_id] || 0}
-                  expanded={expanded.includes(channel.stream_id)}
-                  selected={
-                    view.type === "channel" &&
-                    view.channelId === channel.stream_id
-                  }
-                  toggle={toggleChannel}
-                  open={openChannel}
-                  menu={openChannelMenu}
-                />
-                {expanded.includes(channel.stream_id) && (
-                  <div className="topics">
-                    {!topics[channel.stream_id] && (
-                      <small>Loading threads…</small>
-                    )}
-                    {navigationTopics[channel.stream_id]
-                      ?.slice(0, topicLimits[channel.stream_id] || 20)
-                      .map((topic) => {
-                        const key = topicKey(channel.stream_id, topic.name),
-                          mute = threadMutes[key];
-                        const muted =
-                          !!mute ||
-                          serverMutesTopic(
-                            session,
-                            channel.stream_id,
-                            topic.name,
-                          );
-                        const unread = muted
-                          ? 0
-                          : session?.topicUnreads[key] || 0;
-                        return (
-                          <TopicNavRow
-                            key={topic.name}
-                            channelId={channel.stream_id}
-                            topic={topic.name}
-                            muted={muted}
-                            until={mute?.until}
-                            unread={unread}
-                            selected={
-                              view.type === "channel" &&
-                              view.channelId === channel.stream_id &&
-                              view.topic === topic.name
-                            }
-                            select={select}
-                            menu={setTopicMenu}
-                          />
-                        );
-                      })}
-                    {(navigationTopics[channel.stream_id]?.length || 0) >
-                      (topicLimits[channel.stream_id] || 20) && (
-                      <button
-                        className="topic"
-                        onClick={() =>
-                          setTopicLimits((l) => ({
-                            ...l,
-                            [channel.stream_id]:
-                              (l[channel.stream_id] || 20) + 40,
-                          }))
-                        }
-                      >
-                        Show more threads (
-                        {navigationTopics[channel.stream_id].length})
-                      </button>
-                    )}
-                    <button
-                      className="topic new-topic"
-                      onClick={() =>
-                        select({
-                          type: "channel",
-                          channelId: channel.stream_id,
-                          topic: "",
-                        })
-                      }
-                    >
-                      <Plus size={13} />
-                      New thread
-                    </button>
-                  </div>
-                )}
+          {navigationMode === "dms" ? (
+            <DmSidebar
+              account={account}
+              users={users}
+              recent={session?.recentConversations || []}
+              opened={openedDms}
+              view={view}
+              search={search}
+              select={select}
+            />
+          ) : (
+            <>
+              <div className="section-label">
+                YOUR CHANNELS <span>{channels.length}</span>
               </div>
-            ))}
-          {session && channels.length === 0 && (
-            <p className="nav-empty">
-              No channels yet.
-              <button
-                className="nav-row"
-                onClick={() => openPanel("directory")}
-              >
-                Browse channels
-              </button>
-            </p>
-          )}
-          {session?.unreadIncomplete && (
-            <p className="nav-empty">
-              Unread counts cover recent messages only.
-            </p>
-          )}
-          {topicError && <p className="error">{topicError}</p>}
-          <div className="section-label">
-            PEOPLE <span>{members.length}</span>
-          </div>
-          {visiblePeople.slice(0, 40).map((user) => (
-            <button
-              key={user.user_id}
-              className="person nav-row"
-              onClick={() => select({ type: "dm", userIds: [user.user_id] })}
-            >
-              <Avatar
-                small
-                name={user.full_name}
-                url={user.avatar_url}
-                account={account}
-                userId={user.user_id}
-                org={account.url}
-              />
-              <span>
-                {user.full_name}
-                <PresenceStatus account={account} userId={user.user_id} />
-              </span>
-            </button>
-          ))}
-          {visiblePeople.length > 40 && (
-            <p className="nav-empty">
-              Search to find more people ({visiblePeople.length}).
-            </p>
+              {channels
+                .filter((c) => c.name.toLowerCase().includes(search))
+                .map((channel) => (
+                  <div key={channel.stream_id}>
+                    <ChannelNavRow
+                      channel={channel}
+                      unread={unreadNavigation.channels[channel.stream_id] || 0}
+                      expanded={expanded.includes(channel.stream_id)}
+                      selected={
+                        view.type === "channel" &&
+                        view.channelId === channel.stream_id
+                      }
+                      toggle={toggleChannel}
+                      open={openChannel}
+                      menu={openChannelMenu}
+                    />
+                    {expanded.includes(channel.stream_id) && (
+                      <div className="topics">
+                        {!topics[channel.stream_id] && (
+                          <small>Loading threads…</small>
+                        )}
+                        {navigationTopics[channel.stream_id]
+                          ?.slice(0, topicLimits[channel.stream_id] || 20)
+                          .map((topic) => {
+                            const key = topicKey(channel.stream_id, topic.name),
+                              mute = threadMutes[key];
+                            const muted =
+                              !!mute ||
+                              serverMutesTopic(
+                                session,
+                                channel.stream_id,
+                                topic.name,
+                              );
+                            const unread = muted
+                              ? 0
+                              : session?.topicUnreads[key] || 0;
+                            return (
+                              <TopicNavRow
+                                key={topic.name}
+                                channelId={channel.stream_id}
+                                topic={topic.name}
+                                muted={muted}
+                                until={mute?.until}
+                                unread={unread}
+                                selected={
+                                  view.type === "channel" &&
+                                  view.channelId === channel.stream_id &&
+                                  view.topic === topic.name
+                                }
+                                select={select}
+                                menu={setTopicMenu}
+                              />
+                            );
+                          })}
+                        {(navigationTopics[channel.stream_id]?.length || 0) >
+                          (topicLimits[channel.stream_id] || 20) && (
+                          <button
+                            className="topic"
+                            onClick={() =>
+                              setTopicLimits((l) => ({
+                                ...l,
+                                [channel.stream_id]:
+                                  (l[channel.stream_id] || 20) + 40,
+                              }))
+                            }
+                          >
+                            Show more threads (
+                            {navigationTopics[channel.stream_id].length})
+                          </button>
+                        )}
+                        <button
+                          className="topic new-topic"
+                          onClick={() =>
+                            select({
+                              type: "channel",
+                              channelId: channel.stream_id,
+                              topic: "",
+                            })
+                          }
+                        >
+                          <Plus size={13} />
+                          New thread
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              {session && channels.length === 0 && (
+                <p className="nav-empty">
+                  No channels yet.
+                  <button
+                    className="nav-row"
+                    onClick={() => openPanel("directory")}
+                  >
+                    Browse channels
+                  </button>
+                </p>
+              )}
+              {session?.unreadIncomplete && (
+                <p className="nav-empty">
+                  Unread counts cover recent messages only.
+                </p>
+              )}
+              {topicError && <p className="error">{topicError}</p>}
+              <div className="section-label">
+                PEOPLE <span>{members.length}</span>
+              </div>
+              {visiblePeople.slice(0, 40).map((user) => (
+                <button
+                  key={user.user_id}
+                  className="person nav-row"
+                  onClick={() =>
+                    select({ type: "dm", userIds: [user.user_id] })
+                  }
+                >
+                  <Avatar
+                    small
+                    name={user.full_name}
+                    url={user.avatar_url}
+                    account={account}
+                    userId={user.user_id}
+                    org={account.url}
+                  />
+                  <span>
+                    {user.full_name}
+                    <PresenceStatus account={account} userId={user.user_id} />
+                  </span>
+                </button>
+              ))}
+              {visiblePeople.length > 40 && (
+                <p className="nav-empty">
+                  Search to find more people ({visiblePeople.length}).
+                </p>
+              )}
+            </>
           )}
         </div>
         <div className="sidebar-tools">
@@ -1028,7 +1098,11 @@ const Workspace = memo(function Workspace({
         <header className="conversation-header">
           <button
             className="icon-button mobile-menu"
-            aria-label="Toggle channels"
+            aria-label={
+              navigationMode === "dms"
+                ? "Toggle conversations"
+                : "Toggle channels"
+            }
             ref={navToggle}
             aria-expanded={showNav}
             aria-controls="channel-sidebar"
@@ -1036,6 +1110,16 @@ const Workspace = memo(function Workspace({
           >
             <Menu size={20} />
           </button>
+          {!panel && view.type === "dm" && (
+            <button
+              className="icon-button dm-back"
+              aria-label="Back to direct messages"
+              title="Back to direct messages"
+              onClick={() => select({ type: "home" })}
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
           {!panel && view.type === "channel" ? (
             selectedChannel?.invite_only ? (
               <Lock className="header-hash" size={24} />
@@ -1090,19 +1174,22 @@ const Workspace = memo(function Workspace({
             <>
               <span className="header-divider" />
               <span className="header-description">
-                {selectedChannel?.description ||
-                  "Good conversations start here."}
+                {navigationMode === "dms"
+                  ? session?.name || account.name
+                  : selectedChannel?.description}
               </span>
             </>
           )}
-          <button
-            className={`icon-button members-toggle ${showMembers ? "on" : ""}`}
-            aria-label="Toggle member list"
-            aria-pressed={showMembers}
-            onClick={() => setShowMembers(!showMembers)}
-          >
-            <Users size={21} />
-          </button>
+          {navigationMode !== "dms" && (
+            <button
+              className={`icon-button members-toggle ${showMembers ? "on" : ""}`}
+              aria-label="Toggle member list"
+              aria-pressed={showMembers}
+              onClick={() => setShowMembers(!showMembers)}
+            >
+              <Users size={21} />
+            </button>
+          )}
         </header>
         {session?.error && (
           <div className="connection-error" role="status">
@@ -1266,7 +1353,7 @@ const Workspace = memo(function Workspace({
           />
         )}
       {appearance && <Appearance onClose={() => setAppearance(false)} />}
-      {showMembers && !session?.locked && (
+      {showMembers && navigationMode !== "dms" && !session?.locked && (
         <aside className="members">
           <header>
             THE PEOPLE <span>{members.length}</span>
@@ -1641,19 +1728,19 @@ const Conversation = memo(function Conversation({
               </div>
               <span className="eyebrow">
                 {view.type === "home"
-                  ? "YOUR CORNER OF THE INTERNET"
+                  ? "DIRECT MESSAGES"
                   : "YOU’RE IN GOOD COMPANY"}
               </span>
               <h1>
                 {view.type === "home"
-                  ? "Let’s talk."
+                  ? "Conversations"
                   : view.type === "channel" && view.topic
                     ? view.topic
                     : title}
               </h1>
               <p>
                 {view.type === "home"
-                  ? "Pick a conversation, or find someone in the member list."
+                  ? "Choose a conversation or search for someone in the sidebar."
                   : view.type === "channel"
                     ? "A place for ideas, questions, and everything in between."
                     : "Just you and your people."}

@@ -417,6 +417,8 @@ try {
   await page
     .getByRole("button", { name: "Conversations", exact: true })
     .click();
+  // The member directory belongs to channel navigation, not the DM sidebar.
+  await page.locator(".rail-button.org[aria-pressed=true]").click();
   const owner = page.locator('[data-member-id="1"]');
   await owner.focus();
   await page.locator(".member-window").evaluate((el) => {

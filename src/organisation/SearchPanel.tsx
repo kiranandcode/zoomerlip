@@ -1,11 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Account, Channel, Message, View } from "../types";
 import { MessageContent } from "../components/MessageContent";
+import { request } from "../api";
+import { getCache } from "../cache";
 import {
   emptySearch,
   messageContext,
   SEARCH_LIMIT,
   searchMessages,
+  messageView,
 } from "./search";
 import type { SearchFilters } from "./search";
 import { useOrganisationRevision } from "./lifecycle";
@@ -42,6 +45,9 @@ export function SearchPanel({
     [error, setError] = useState("");
   const [done, setDone] = useState(false),
     [trimmed, setTrimmed] = useState(false);
+  const [unreadScope, setUnreadScope] = useState<"all" | "stream" | "private">(
+    "all",
+  );
   const cursor = useRef<number | undefined>(undefined),
     flight = useRef<AbortController | null>(null);
   const revision = useOrganisationRevision(account.id, "all", () =>
@@ -93,6 +99,29 @@ export function SearchPanel({
     setBusy(true);
     setError("");
     try {
+      if (special === "unread") {
+        const latest = await request<{ message: Message }>(
+          account,
+          `/messages/${message.id}`,
+          { apply_markdown: true },
+          "GET",
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
+        const view = messageView(latest.message, account.userId);
+        const cache = getCache(account),
+          ui = cache.ui(view);
+        ui.anchorId = message.id;
+        ui.anchorTop = 0;
+        ui.atBottom = false;
+        await cache.load(view, true, message.id);
+        if (!controller.signal.aborted) {
+          const error = cache.snapshot(view).error;
+          if (error) throw new Error(error);
+          onSelect(view);
+        }
+        return;
+      }
       const result = await messageContext(
         account,
         message,
@@ -114,88 +143,130 @@ export function SearchPanel({
   }, [context]);
   const shownMessages =
     context?.messages ||
-    (visibleMessage ? messages.filter(visibleMessage) : messages);
+    messages.filter(
+      (message) =>
+        (!visibleMessage || visibleMessage(message)) &&
+        (special !== "unread" ||
+          unreadScope === "all" ||
+          message.type === unreadScope),
+    );
   return (
-    <section className="organisation-panel" aria-label="Message search">
-      <form
-        className="organisation-form search-filters"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setQuery({ ...filters });
-        }}
-      >
-        <label>
-          Search text
-          <input
-            autoFocus
-            aria-label="Search message text"
-            value={filters.text}
-            maxLength={1000}
-            onChange={(e) => setFilters({ ...filters, text: e.target.value })}
-          />
-        </label>
-        <label>
-          Sender
-          <input
-            placeholder="Email or user ID"
-            value={filters.sender}
-            maxLength={1000}
-            onChange={(e) => setFilters({ ...filters, sender: e.target.value })}
-          />
-        </label>
-        <label>
-          Channel
-          <select
-            aria-label="Channel"
-            value={filters.channel}
-            onChange={(e) =>
-              setFilters({ ...filters, channel: e.target.value })
-            }
-          >
-            <option value="">All accessible channels</option>
-            {channels.map((c) => (
-              <option key={c.stream_id} value={c.stream_id}>
-                {c.name}
-              </option>
+    <section
+      className={`organisation-panel ${special === "unread" ? "unread-inbox" : ""}`}
+      aria-label={special === "unread" ? "Unread messages" : "Message search"}
+    >
+      {special === "unread" ? (
+        <div className="unread-toolbar">
+          <div role="group" aria-label="Unread conversations">
+            {(
+              [
+                ["all", "All"],
+                ["stream", "Channels"],
+                ["private", "DMs"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                aria-pressed={unreadScope === value}
+                onClick={() => setUnreadScope(value)}
+              >
+                {label}
+              </button>
             ))}
-          </select>
-        </label>
-        <label>
-          Topic
-          <input
-            value={filters.topic}
-            maxLength={1000}
-            onChange={(e) => setFilters({ ...filters, topic: e.target.value })}
-          />
-        </label>
-        <label>
-          After date
-          <input
-            type="date"
-            value={filters.after}
-            onChange={(e) => setFilters({ ...filters, after: e.target.value })}
-          />
-        </label>
-        <label>
-          Before date
-          <input
-            type="date"
-            value={filters.before}
-            onChange={(e) => setFilters({ ...filters, before: e.target.value })}
-          />
-        </label>
-        <label className="check-label">
-          <input
-            type="checkbox"
-            checked={filters.attachment}
-            onChange={(e) =>
-              setFilters({ ...filters, attachment: e.target.checked })
-            }
-          />
-          Has attachment
-        </label>
-        <button type="submit">Search messages</button>
-      </form>
+          </div>
+          <button disabled={busy} onClick={() => void load(true)}>
+            Refresh
+          </button>
+        </div>
+      ) : (
+        <form
+          className="organisation-form search-filters"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setQuery({ ...filters });
+          }}
+        >
+          <label>
+            Search text
+            <input
+              autoFocus
+              aria-label="Search message text"
+              value={filters.text}
+              maxLength={1000}
+              onChange={(e) => setFilters({ ...filters, text: e.target.value })}
+            />
+          </label>
+          <label>
+            Sender
+            <input
+              placeholder="Email or user ID"
+              value={filters.sender}
+              maxLength={1000}
+              onChange={(e) =>
+                setFilters({ ...filters, sender: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            Channel
+            <select
+              aria-label="Channel"
+              value={filters.channel}
+              onChange={(e) =>
+                setFilters({ ...filters, channel: e.target.value })
+              }
+            >
+              <option value="">All accessible channels</option>
+              {channels.map((c) => (
+                <option key={c.stream_id} value={c.stream_id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Topic
+            <input
+              value={filters.topic}
+              maxLength={1000}
+              onChange={(e) =>
+                setFilters({ ...filters, topic: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            After date
+            <input
+              type="date"
+              value={filters.after}
+              onChange={(e) =>
+                setFilters({ ...filters, after: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            Before date
+            <input
+              type="date"
+              value={filters.before}
+              onChange={(e) =>
+                setFilters({ ...filters, before: e.target.value })
+              }
+            />
+          </label>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={filters.attachment}
+              onChange={(e) =>
+                setFilters({ ...filters, attachment: e.target.checked })
+              }
+            />
+            Has attachment
+          </label>
+          <button type="submit">Search messages</button>
+        </form>
+      )}
       {error && (
         <p role="alert">
           {error} <button onClick={() => void load(true)}>Retry search</button>
@@ -216,7 +287,15 @@ export function SearchPanel({
           newest matches.
         </p>
       )}
-      {!busy && !shownMessages.length && <p>No matching messages.</p>}
+      {!busy && !shownMessages.length && (
+        <p>
+          {special === "unread"
+            ? done
+              ? "No unread messages here."
+              : "No unread messages in this page. Load older messages below."
+            : "No matching messages."}
+        </p>
+      )}
       <div
         className="search-results"
         aria-label={context ? "Result in context" : "Search results"}
@@ -272,7 +351,9 @@ export function SearchPanel({
             />
             {!context && (
               <button disabled={busy} onClick={() => void open(m)}>
-                Open message {m.id} in context
+                {special === "unread"
+                  ? "Open conversation"
+                  : `Open message ${m.id} in context`}
               </button>
             )}
           </article>
