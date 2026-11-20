@@ -18,6 +18,10 @@ const context = await browser.newContext({
 });
 context.setDefaultTimeout(10000);
 const page = await context.newPage();
+async function composeOption(name) {
+  await page.getByRole("button", { name: "More message options" }).click();
+  await page.getByRole("menuitem", { name, exact: true }).click();
+}
 const errors = [],
   blocked = [],
   writes = [],
@@ -288,6 +292,27 @@ try {
       .click();
   await openRoom();
   const composer = page.getByRole("textbox", { name: "Message", exact: true });
+  await expect(
+    page.getByRole("button", { name: "Preview", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    (await page.locator(".compose-area").boundingBox()).height,
+  ).toBeLessThan(130);
+  await page.screenshot({ path: "/tmp/zoomerlip-composer-desktop.png" });
+  const more = page.getByRole("button", { name: "More message options" });
+  await more.click();
+  await expect(
+    page.getByRole("menuitem", { name: "Attach file", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(
+    page.getByRole("menuitem", { name: "Drafts", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(more).toBeFocused();
+  await expect(page.getByRole("menu", { name: "Message options" })).toHaveCount(
+    0,
+  );
   await composer.fill("persistent fixture");
   await page.getByLabel("Thread topic", { exact: true }).fill("Thread");
   await page.reload();
@@ -311,12 +336,14 @@ try {
     isComposing: true,
   });
   expect(writes.filter((w) => w.path === "/messages")).toHaveLength(0);
+  await page.getByRole("button", { name: "Formatting", exact: true }).click();
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   await expect(
     page.getByRole("region", { name: "Markdown preview" }),
   ).toContainText("Preview fixture");
   expect(await page.evaluate(() => window.previewXss)).toBeUndefined();
   await page.getByRole("button", { name: "Close preview" }).click();
+  await page.getByRole("button", { name: "Formatting", exact: true }).click();
   await page.getByLabel("Attach files", { exact: true }).setInputFiles({
     name: "fixture.txt",
     mimeType: "text/plain",
@@ -363,7 +390,7 @@ try {
   await expect(
     row.getByText("Reminder scheduled on the server."),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Snippets", exact: true }).click();
+  await composeOption("Snippets");
   const snippetPanel = page.getByRole("region", {
     name: "Saved snippets",
     exact: true,
@@ -383,10 +410,7 @@ try {
   await snippetPanel
     .getByRole("button", { name: "Close", exact: true })
     .click();
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Scheduled messages", exact: true })
-    .click();
+  await composeOption("Scheduled messages");
   const schedulePanel = page.getByRole("region", {
     name: "Scheduled messages",
     exact: true,
@@ -420,7 +444,7 @@ try {
   await schedulePanel
     .getByRole("button", { name: "Close", exact: true })
     .click();
-  await page.getByRole("button", { name: "Poll / to-do", exact: true }).click();
+  await composeOption("Poll / to-do");
   const builder = page.getByRole("region", {
     name: "Create interactive message",
   });
@@ -431,10 +455,7 @@ try {
     .getByRole("button", { name: "Prepare interactive draft" })
     .click();
   await expect(composer).toHaveValue("/todo Fixture tasks\n- One\n- Two");
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Drafts", exact: true })
-    .click();
+  await composeOption("Drafts");
   const drafts = page.getByRole("region", {
     name: "Saved drafts",
     exact: true,
@@ -463,6 +484,27 @@ try {
   await schedulePanel
     .getByRole("button", { name: "Close", exact: true })
     .click();
+  await composer.fill("");
+  await page.setViewportSize({ width: 320, height: 568 });
+  expect(
+    (await page.locator(".compose-area").boundingBox()).height,
+  ).toBeLessThan(130);
+  await page.screenshot({ path: "/tmp/zoomerlip-composer-mobile.png" });
+  await more.click();
+  const options = page.getByRole("menu", { name: "Message options" });
+  const bounds = await options.boundingBox();
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+  expect(bounds.y).toBeGreaterThanOrEqual(0);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(568);
+  await page.screenshot({ path: "/tmp/zoomerlip-composer-mobile-menu.png" });
+  await page.setViewportSize({ width: 320, height: 300 });
+  await expect(options).toBeInViewport();
+  await page.getByRole("menuitem", { name: "Drafts", exact: true }).focus();
+  await expect(
+    page.getByRole("menuitem", { name: "Drafts", exact: true }),
+  ).toBeInViewport();
+  await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(

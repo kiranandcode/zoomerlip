@@ -447,6 +447,30 @@ try {
   await phone.getByRole("button", { name: "Toggle channels" }).tap();
   await phone.locator(".nav-backdrop").tap({ position: { x: 315, y: 300 } });
   await expect(phone.locator(".sidebar")).toBeHidden();
+  const more = phone.getByRole("button", { name: "More message options" });
+  expect((await more.boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await more.tap();
+  await expect(
+    phone.getByRole("menu", { name: "Message options" }),
+  ).toBeInViewport();
+  const item = phone.getByRole("menuitem", {
+    name: "Attach file",
+    exact: true,
+  });
+  expect((await item.boundingBox()).height).toBeGreaterThanOrEqual(44);
+  // Native Back sends Escape to the open menu.
+  await phone.keyboard.press("Escape");
+  await expect(more).toBeFocused();
+  await more.tap();
+  await phone.locator(".conversation-header strong").tap();
+  await expect(
+    phone.getByRole("menu", { name: "Message options" }),
+  ).toHaveCount(0);
+  await phone.getByRole("button", { name: "Formatting", exact: true }).tap();
+  await expect(
+    phone.getByRole("button", { name: "Preview", exact: true }),
+  ).toBeInViewport();
+  await phone.getByRole("button", { name: "Formatting", exact: true }).tap();
   const row = phone.locator(".message").last();
   await row.scrollIntoViewIfNeeded();
   // Tap the message body: the row's centre can land on the sender's name,

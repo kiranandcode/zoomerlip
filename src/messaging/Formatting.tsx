@@ -4,6 +4,16 @@ import { request } from "../api";
 import { MessageContent } from "../components/MessageContent";
 import type { Account } from "../types";
 import { formatSelection } from "./completion";
+import {
+  Bold,
+  Italic,
+  Code,
+  Quote,
+  List,
+  Link,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 export function Formatting({
   account,
   text,
@@ -39,20 +49,26 @@ export function Formatting({
     return () => window.removeEventListener("zoomerlip-messaging-reset", reset);
   }, [account.id]);
   const formats = [
-    ["Bold", "**", "**"],
-    ["Italic", "*", "*"],
-    ["Code", "`", "`"],
-    ["Quote", "\n> ", ""],
-    ["List", "\n* ", ""],
-    ["Link", "[", "](https://)"],
+    ["Bold", "**", "**", Bold],
+    ["Italic", "*", "*", Italic],
+    ["Code", "`", "`", Code],
+    ["Quote", "\n> ", "", Quote],
+    ["List", "\n* ", "", List],
+    ["Link", "[", "](https://)", Link],
   ] as const;
   return (
     <>
-      <div className="messaging-tools" aria-label="Formatting">
-        {formats.map(([name, before, after]) => (
+      <div
+        className="messaging-tools composer-formatting"
+        role="group"
+        aria-label="Formatting tools"
+      >
+        {formats.map(([name, before, after, Icon]) => (
           <button
             key={name}
             type="button"
+            aria-label={name}
+            title={name}
             onClick={() => {
               const d = formatSelection(
                 text,
@@ -68,11 +84,15 @@ export function Formatting({
               });
             }}
           >
-            {name}
+            <Icon size={18} />
           </button>
         ))}
         <button
           type="button"
+          aria-label={
+            busy ? "Rendering…" : preview ? "Close preview" : "Preview"
+          }
+          title={preview ? "Close preview" : "Preview"}
           disabled={!text.trim() || busy}
           onClick={async () => {
             if (preview) {
@@ -106,7 +126,7 @@ export function Formatting({
             }
           }}
         >
-          {busy ? "Rendering…" : preview ? "Close preview" : "Preview"}
+          {preview ? <EyeOff size={18} /> : <Eye size={18} />}
         </button>
       </div>
       {error && <p role="alert">{error}</p>}

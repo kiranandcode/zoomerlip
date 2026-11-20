@@ -90,24 +90,20 @@ export function useAttachments(
   return {
     add,
     busy: uploads.some((u) => u.state === "uploading"),
-    button: (
-      <>
-        <button type="button" onClick={() => picker.current?.click()}>
-          Attach file
-        </button>
-        <input
-          hidden
-          ref={picker}
-          type="file"
-          multiple
-          accept="*/*"
-          aria-label="Attach files"
-          onChange={(e) => {
-            if (e.target.files) add(e.target.files);
-            e.target.value = "";
-          }}
-        />
-      </>
+    openPicker: () => picker.current?.click(),
+    input: (
+      <input
+        hidden
+        ref={picker}
+        type="file"
+        multiple
+        accept="*/*"
+        aria-label="Attach files"
+        onChange={(e) => {
+          if (e.target.files) add(e.target.files);
+          e.target.value = "";
+        }}
+      />
     ),
     status: uploads.length > 0 && (
       <section className="messaging-panel" aria-label="Uploads">

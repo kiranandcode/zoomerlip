@@ -5,6 +5,7 @@ import type { ProductivityKind } from "../messaging/productivity";
 import { quoteMessage } from "../messaging/actions";
 import { useCompletion } from "../messaging/useCompletion";
 import { Formatting } from "../messaging/Formatting";
+import { ComposerMenu } from "../messaging/ComposerMenu";
 import { useAttachments } from "../messaging/useAttachments";
 import { messagingCapabilities } from "../messaging/capabilities";
 import {
@@ -16,7 +17,18 @@ import {
   useRef,
   useState,
 } from "react";
-import { Lock, MessageCircle, Send } from "lucide-react";
+import {
+  Lock,
+  MessageCircle,
+  Send,
+  Type,
+  Paperclip,
+  ListChecks,
+  CalendarClock,
+  StickyNote,
+  Bell,
+  FileText,
+} from "lucide-react";
 import { useTyping } from "../live/typing";
 import { DraftList } from "../messaging/DraftList";
 import {
@@ -77,6 +89,7 @@ export const Composer = memo(
       [topic, setTopic] = useState(initial?.topic ?? saved.topic),
       [showDrafts, setShowDrafts] = useState(false),
       [showWidget, setShowWidget] = useState(false),
+      [showFormatting, setShowFormatting] = useState(false),
       [productivity, setProductivity] = useState<ProductivityKind | null>(null),
       [sending, setSending] = useState(false);
     const input = useRef<HTMLTextAreaElement>(null),
@@ -278,7 +291,7 @@ export const Composer = memo(
           }
         }}
       >
-        <div className="compose-audience">
+        <div className="compose-audience" id="compose-audience">
           {view.type === "channel" ? (
             <>
               {privateChannel && <Lock size={12} />}
@@ -293,30 +306,7 @@ export const Composer = memo(
             <span>Direct message · {title}</span>
           )}
         </div>
-        <div className="messaging-tools">
-          {attachments.button}
-          <button type="button" onClick={() => setShowWidget(!showWidget)}>
-            Poll / to-do
-          </button>
-          <button
-            type="button"
-            onClick={() => setProductivity("scheduled_messages")}
-          >
-            Scheduled messages
-          </button>
-          <button
-            type="button"
-            onClick={() => setProductivity("saved_snippets")}
-          >
-            Snippets
-          </button>
-          <button type="button" onClick={() => setProductivity("reminders")}>
-            Reminders
-          </button>
-          <button type="button" onClick={() => setShowDrafts(!showDrafts)}>
-            Drafts
-          </button>
-        </div>
+        {attachments.input}
         {showDrafts && (
           <DraftList
             account={account}
@@ -356,12 +346,14 @@ export const Composer = memo(
           />
         )}
         {attachments.status}
-        <Formatting
-          account={account}
-          text={text}
-          input={input}
-          onChange={changeText}
-        />
+        {showFormatting && (
+          <Formatting
+            account={account}
+            text={text}
+            input={input}
+            onChange={changeText}
+          />
+        )}
         {completion.list}
         <form
           className="composer"
@@ -370,14 +362,14 @@ export const Composer = memo(
             void send();
           }}
         >
-          {view.type === "channel" && (
+          {view.type === "channel" && !view.topic && (
             <label className="topic-input">
               <MessageCircle size={14} />
               <input
                 aria-label="Thread topic"
                 aria-describedby="topic-length"
                 aria-invalid={topic.length > limits.topicLength}
-                placeholder="Give this thread a topic…"
+                placeholder="Topic"
                 value={topic}
                 onChange={(e) => {
                   setTopic(e.target.value);
@@ -394,11 +386,46 @@ export const Composer = memo(
             </label>
           )}
           <div className="compose-row">
+            <ComposerMenu
+              items={[
+                {
+                  label: "Attach file",
+                  icon: Paperclip,
+                  action: attachments.openPicker,
+                },
+                {
+                  label: "Poll / to-do",
+                  icon: ListChecks,
+                  action: () => setShowWidget(!showWidget),
+                },
+                {
+                  label: "Scheduled messages",
+                  icon: CalendarClock,
+                  action: () => setProductivity("scheduled_messages"),
+                },
+                {
+                  label: "Snippets",
+                  icon: StickyNote,
+                  action: () => setProductivity("saved_snippets"),
+                },
+                {
+                  label: "Reminders",
+                  icon: Bell,
+                  action: () => setProductivity("reminders"),
+                },
+                {
+                  label: "Drafts",
+                  icon: FileText,
+                  action: () => setShowDrafts(!showDrafts),
+                },
+              ]}
+            />
             <textarea
               ref={input}
               {...completion.props}
               id="message-composer"
               aria-label="Message"
+              aria-describedby="compose-audience"
               rows={1}
               enterKeyHint={touch ? "enter" : "send"}
               placeholder={`Message ${view.type === "channel" ? "#" : "@"}${title}`}
@@ -434,8 +461,23 @@ export const Composer = memo(
               }}
             />
             <button
-              className="send-button"
+              type="button"
+              className="composer-icon"
+              aria-label="Formatting"
+              title="Formatting"
+              aria-expanded={showFormatting}
+              onClick={() => setShowFormatting(!showFormatting)}
+            >
+              <Type size={20} />
+            </button>
+            <button
+              className="send-button composer-icon"
               aria-label="Send message"
+              title={
+                touch
+                  ? "Send message"
+                  : "Send message (Enter; Shift+Enter for a new line)"
+              }
               disabled={
                 sending ||
                 attachments.busy ||
@@ -448,20 +490,6 @@ export const Composer = memo(
             </button>
           </div>
         </form>
-        <div className="compose-hint">
-          {touch ? (
-            <span>
-              <strong>Send</strong> to post · <strong>Enter</strong> for a new
-              line
-            </span>
-          ) : (
-            <span>
-              <strong>Enter</strong> to send · <strong>Shift + Enter</strong>{" "}
-              for a new line
-            </span>
-          )}
-          <span>Markdown welcome</span>
-        </div>
       </div>
     );
   }),
