@@ -1,5 +1,6 @@
 import { useNotificationNavigation } from "./notifications/navigation";
 import { trackViewport } from "./viewport";
+import { OrgIcon } from "./components/OrgIcon";
 import type { NotificationTarget } from "./notifications/navigation";
 import { destinationKey, draftFor, saveDraft } from "./messaging/drafts";
 import type { Destination } from "./messaging/drafts";
@@ -52,7 +53,7 @@ import "./organisation/organisation.css";
 import { clearCache, getCache } from "./cache";
 import { useMessages } from "./useMessages";
 import { useReadMessages } from "./useReadMessages";
-import { Avatar, initials } from "./components/Avatar";
+import { Avatar } from "./components/Avatar";
 import { ProfilePage } from "./components/ProfilePage";
 import { Appearance } from "./components/AppearanceLoader";
 import { MemberList } from "./components/MemberList";
@@ -268,7 +269,11 @@ export default function App() {
               }
               onClick={() => setActiveId(a.id)}
             >
-              {initials(sessions[a.id]?.name || a.name)}
+              <OrgIcon
+                name={sessions[a.id]?.name || a.name}
+                url={sessions[a.id]?.iconUrl}
+                org={a.url}
+              />
               {a.id !== active.id && !!unreadCounts[a.id] && (
                 <span className="badge">
                   {unreadCounts[a.id] > 99 ? "99+" : unreadCounts[a.id]}

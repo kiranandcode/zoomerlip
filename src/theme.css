@@ -121,6 +121,15 @@ button:hover {
   color: var(--accent);
   border: 0;
 }
+.rail-button.org {
+  padding: 0;
+}
+.org-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
 .rail-divider {
   background: var(--border);
 }

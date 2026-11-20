@@ -19,6 +19,7 @@ export type Session = {
   error: string;
   revision: number;
   name: string;
+  iconUrl: string;
   unread: number;
   mutedUsers: number[];
   recentConversations: RecentConversation[];
@@ -38,6 +39,7 @@ export const initialSession: Session = {
   error: "",
   revision: 0,
   name: "",
+  iconUrl: "",
   unread: 0,
   mutedUsers: [],
   recentConversations: [],
@@ -55,6 +57,7 @@ export type Registration = {
   subscriptions?: Channel[];
   realm_users?: User[];
   realm_name?: string;
+  realm_icon_url?: string;
   muted_users?: { id: number }[];
   recent_private_conversations?: RecentConversation[];
   user_topics?: {
@@ -148,6 +151,8 @@ export class SessionModel {
         is_active: u.is_active !== false,
       })),
       name: data.realm_name || name,
+      iconUrl:
+        typeof data.realm_icon_url === "string" ? data.realm_icon_url : "",
       mutedUsers: (data.muted_users || []).map((u) => u.id),
       recentConversations: data.recent_private_conversations || [],
       mutedTopics: (data.user_topics || [])
@@ -296,6 +301,10 @@ export class SessionModel {
               : {};
         this.state = {
           ...this.state,
+          iconUrl:
+            typeof (updates as Record<string, unknown>).icon_url === "string"
+              ? (updates as { icon_url: string }).icon_url
+              : this.state.iconUrl,
           organisation: {
             ...this.state.organisation,
             ...organisationSettings(

@@ -26,6 +26,48 @@ const registration = {
   muted_users: [{ id: 2 }],
   recent_private_conversations: [{ user_ids: [3], max_message_id: 90 }],
 };
+it("keeps organisation icons isolated and refreshes them from realm events", () => {
+  const first = new SessionModel();
+  const second = new SessionModel();
+  first.register(
+    { ...registration, realm_icon_url: "/icons/first.png" },
+    "First",
+  );
+  second.register(
+    { ...registration, realm_icon_url: "https://cdn.test/second.png" },
+    "Second",
+  );
+  expect(first.state.iconUrl).toBe("/icons/first.png");
+  first.apply(
+    [
+      {
+        id: 1,
+        type: "realm",
+        op: "update_dict",
+        property: "icon",
+        data: { icon_url: "/icons/new.png", icon_source: "U" },
+      },
+    ],
+    1,
+  );
+  expect(first.state.iconUrl).toBe("/icons/new.png");
+  expect(second.state.iconUrl).toBe("https://cdn.test/second.png");
+  first.apply(
+    [
+      {
+        id: 2,
+        type: "realm",
+        op: "update",
+        property: "name",
+        value: "Renamed",
+      },
+    ],
+    1,
+  );
+  expect(first.state.iconUrl).toBe("/icons/new.png");
+  first.register(registration, "First");
+  expect(first.state.iconUrl).toBe("");
+});
 it("uses server flags and mute state rather than counting every message", () => {
   const model = new SessionModel();
   model.register(registration, "Test");
