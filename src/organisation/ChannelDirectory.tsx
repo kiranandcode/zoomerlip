@@ -8,12 +8,14 @@ import {
   canCreateChannel,
   canJoinChannel,
   canMembership,
+  isAdmin,
 } from "./permissions";
 import {
   channelDirectory,
   changeSubscription,
   createChannel,
   updateChannel,
+  setChannelArchived,
 } from "./channels";
 import { useOperation, useResource } from "./useResource";
 import { invalidateOrganisation } from "./lifecycle";
@@ -39,8 +41,11 @@ export function ChannelDirectory({
   access: Access;
   users: User[];
 }) {
-  const resource = useResource(account.id, "directory", (signal) =>
-    channelDirectory(account, signal),
+  const [archived, setArchived] = useState(false);
+  const resource = useResource(
+    account.id,
+    `directory:${archived}:${access.featureLevel}:${isAdmin(access)}`,
+    (signal) => channelDirectory(account, signal, access, archived),
   );
   const [filter, setFilter] = useState(""),
     [limit, setLimit] = useState(50),
@@ -51,6 +56,24 @@ export function ChannelDirectory({
   );
   return (
     <section className="organisation-panel" aria-label="Channel directory">
+      {access.featureLevel >= 315 && (
+        <label className="organisation-form">
+          Channel state
+          <select
+            aria-label="Channel state"
+            value={archived ? "archived" : "active"}
+            onChange={(e) => {
+              setArchived(e.target.value === "archived");
+              setSelected(null);
+              setCreating(false);
+              setLimit(50);
+            }}
+          >
+            <option value="active">Active channels</option>
+            <option value="archived">Archived channels</option>
+          </select>
+        </label>
+      )}
       <div className="organisation-toolbar">
         <button
           onClick={() => {
@@ -121,7 +144,8 @@ export function ChannelDirectory({
                   key={c.stream_id}
                   onClick={() => setSelected(c.stream_id)}
                 >
-                  {c.name} ·{" "}
+                  {c.name}
+                  {c.is_archived ? " · Archived" : ""} ·{" "}
                   {c.is_web_public
                     ? "Web public"
                     : c.invite_only
@@ -252,76 +276,82 @@ function ChannelDetails({
     account.id,
     `subscribers:${channel.stream_id}`,
     (signal) =>
-      request<{ subscribers: number[] }>(
-        account,
-        `/streams/${channel.stream_id}/members`,
-        {},
-        "GET",
-        signal,
-      ),
+      channel.is_archived
+        ? Promise.resolve({ subscribers: [] as number[] })
+        : request<{ subscribers: number[] }>(
+            account,
+            `/streams/${channel.stream_id}/members`,
+            {},
+            "GET",
+            signal,
+          ),
   );
   const changed = () => {
     getCache(account).invalidate();
     invalidateOrganisation(account.id);
   };
-  const manage = canAdminChannel(access, channel);
+  const manage = !channel.is_archived && canAdminChannel(access, channel);
   return (
     <>
       <div className="organisation-toolbar">
         <button onClick={back}>Back to directory</button>
-        {subscribed ? (
-          <button
-            disabled={op.busy}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Leave ${channel.name}? You will stop receiving its messages.${channel.invite_only ? " You may need another invitation to rejoin and may lose history access." : ""}`,
-                )
-              )
-                void op.run(
-                  (signal) =>
-                    changeSubscription(
-                      account,
-                      access,
-                      channel,
-                      false,
-                      subscribed,
-                      signal,
-                    ),
-                  () => {
-                    getCache(account).purgeStreams([channel.stream_id]);
-                    changed();
-                  },
-                );
-            }}
-          >
-            Leave channel
-          </button>
-        ) : (
-          canJoinChannel(access, channel) && (
+        {!channel.is_archived &&
+          (subscribed ? (
             <button
               disabled={op.busy}
-              onClick={() =>
-                void op.run(
-                  (signal) =>
-                    changeSubscription(
-                      account,
-                      access,
-                      channel,
-                      true,
-                      subscribed,
-                      signal,
-                    ),
-                  changed,
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Leave ${channel.name}? You will stop receiving its messages.${channel.invite_only ? " You may need another invitation to rejoin and may lose history access." : ""}`,
+                  )
                 )
-              }
+                  void op.run(
+                    (signal) =>
+                      changeSubscription(
+                        account,
+                        access,
+                        channel,
+                        false,
+                        subscribed,
+                        signal,
+                      ),
+                    () => {
+                      getCache(account).purgeStreams([channel.stream_id]);
+                      changed();
+                    },
+                  );
+              }}
             >
-              Join channel
+              Leave channel
             </button>
-          )
-        )}
+          ) : (
+            canJoinChannel(access, channel) && (
+              <button
+                disabled={op.busy}
+                onClick={() =>
+                  void op.run(
+                    (signal) =>
+                      changeSubscription(
+                        account,
+                        access,
+                        channel,
+                        true,
+                        subscribed,
+                        signal,
+                      ),
+                    changed,
+                  )
+                }
+              >
+                Join channel
+              </button>
+            )
+          ))}
       </div>
-      <h2>{channel.name}</h2>
+      <h2>
+        {channel.name}
+        {channel.is_archived ? " · Archived" : ""}
+      </h2>
       <p>{channel.description || "No description."}</p>
       <p>
         {channel.is_web_public
@@ -334,6 +364,47 @@ function ChannelDetails({
           : "New subscribers can read channel history."}
       </p>
       <OperationStatus operation={op} />
+      {(channel.is_archived
+        ? canAdminChannel(access, channel)
+        : isAdmin(access)) && (
+        <div className="organisation-form">
+          {channel.is_archived && access.featureLevel < 388 ? (
+            <p>Restoring channels requires Zulip feature level 388 or later.</p>
+          ) : (
+            <button
+              disabled={op.busy}
+              onClick={() => {
+                const archive = !channel.is_archived;
+                if (
+                  !window.confirm(
+                    archive
+                      ? `Archive ${channel.name}? Sending new messages will stop. Existing messages remain on the server. Members may lose access. Restore requires a compatible server.`
+                      : `Restore ${channel.name}? Existing subscribers can use the channel again under its current visibility and history settings.`,
+                  )
+                )
+                  return;
+                void op.run(
+                  (signal) =>
+                    setChannelArchived(
+                      account,
+                      access,
+                      channel,
+                      archive,
+                      signal,
+                    ),
+                  () => {
+                    if (archive)
+                      getCache(account).purgeStreams([channel.stream_id]);
+                    changed();
+                  },
+                );
+              }}
+            >
+              {channel.is_archived ? "Restore channel" : "Archive channel"}
+            </button>
+          )}
+        </div>
+      )}
       {manage && (
         <form
           className="organisation-form"
@@ -405,90 +476,99 @@ function ChannelDetails({
           <button disabled={op.busy}>Save channel settings</button>
         </form>
       )}
-      <h3>Membership</h3>
-      {members.loading && <p role="status">Loading subscribers…</p>}
-      {members.error && (
-        <p role="alert">
-          {members.error}{" "}
-          <button onClick={members.refresh}>Retry subscribers</button>
-        </p>
-      )}
-      <p>
-        {members.data ? `${members.data.subscribers.length} subscribers` : ""}
-      </p>
-      <form className="organisation-form" onSubmit={(e) => e.preventDefault()}>
-        <label>
-          Member ID
-          <input
-            type="number"
-            min="1"
-            value={person}
-            onChange={(e) => setPerson(e.target.value)}
-          />
-        </label>
-        {person && (
+      {!channel.is_archived && (
+        <>
+          <h3>Membership</h3>
+          {members.loading && <p role="status">Loading subscribers…</p>}
+          {members.error && (
+            <p role="alert">
+              {members.error}{" "}
+              <button onClick={members.refresh}>Retry subscribers</button>
+            </p>
+          )}
           <p>
-            {users.find((u) => u.user_id === Number(person))?.full_name ||
-              "Unknown member"}
-            {members.data?.subscribers.includes(Number(person))
-              ? " · Subscribed"
+            {members.data
+              ? `${members.data.subscribers.length} subscribers`
               : ""}
           </p>
-        )}
-        <div className="organisation-toolbar">
-          {(["add", "remove"] as const)
-            .filter((action) =>
-              canMembership(access, channel, action, subscribed),
-            )
-            .map((action) => (
-              <button
-                key={action}
-                disabled={
-                  op.busy ||
-                  !users.some(
-                    (u) => u.user_id === Number(person) && u.is_active,
-                  )
-                }
-                onClick={() => {
-                  if (
-                    !window.confirm(
-                      `${action === "add" ? "Add" : "Remove"} ${users.find((u) => u.user_id === Number(person))?.full_name} ${action === "add" ? "to" : "from"} ${channel.name}? ${action === "add" ? "This grants access to the channel and its available history." : "They will lose subscription access."}`,
-                    )
-                  )
-                    return;
-                  void op.run(
-                    (signal) =>
-                      changeSubscription(
-                        account,
-                        access,
-                        channel,
-                        action === "add",
-                        subscribed,
-                        signal,
-                        Number(person),
-                      ),
-                    changed,
-                  );
-                }}
-              >
-                {action === "add" ? "Add member" : "Remove member"}
-              </button>
+          <form
+            className="organisation-form"
+            onSubmit={(e) => e.preventDefault()}
+          >
+            <label>
+              Member ID
+              <input
+                type="number"
+                min="1"
+                value={person}
+                onChange={(e) => setPerson(e.target.value)}
+              />
+            </label>
+            {person && (
+              <p>
+                {users.find((u) => u.user_id === Number(person))?.full_name ||
+                  "Unknown member"}
+                {members.data?.subscribers.includes(Number(person))
+                  ? " · Subscribed"
+                  : ""}
+              </p>
+            )}
+            <div className="organisation-toolbar">
+              {(["add", "remove"] as const)
+                .filter((action) =>
+                  canMembership(access, channel, action, subscribed),
+                )
+                .map((action) => (
+                  <button
+                    key={action}
+                    disabled={
+                      op.busy ||
+                      !users.some(
+                        (u) => u.user_id === Number(person) && u.is_active,
+                      )
+                    }
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          `${action === "add" ? "Add" : "Remove"} ${users.find((u) => u.user_id === Number(person))?.full_name} ${action === "add" ? "to" : "from"} ${channel.name}? ${action === "add" ? "This grants access to the channel and its available history." : "They will lose subscription access."}`,
+                        )
+                      )
+                        return;
+                      void op.run(
+                        (signal) =>
+                          changeSubscription(
+                            account,
+                            access,
+                            channel,
+                            action === "add",
+                            subscribed,
+                            signal,
+                            Number(person),
+                          ),
+                        changed,
+                      );
+                    }}
+                  >
+                    {action === "add" ? "Add member" : "Remove member"}
+                  </button>
+                ))}
+            </div>
+          </form>
+          <div className="organisation-list">
+            {members.data?.subscribers.slice(0, 100).map((id) => (
+              <span key={id}>
+                {users.find((u) => u.user_id === id)?.full_name || "Member"} ·
+                ID {id}
+              </span>
             ))}
-        </div>
-      </form>
-      <div className="organisation-list">
-        {members.data?.subscribers.slice(0, 100).map((id) => (
-          <span key={id}>
-            {users.find((u) => u.user_id === id)?.full_name || "Member"} · ID{" "}
-            {id}
-          </span>
-        ))}
-      </div>
-      {(members.data?.subscribers.length || 0) > 100 && (
-        <p>
-          Showing the first 100 subscribers. Enter a member ID to manage another
-          subscriber.
-        </p>
+          </div>
+          {(members.data?.subscribers.length || 0) > 100 && (
+            <p>
+              Showing the first 100 subscribers. Enter a member ID to manage
+              another subscriber.
+            </p>
+          )}
+        </>
       )}
     </>
   );

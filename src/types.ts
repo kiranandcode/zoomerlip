@@ -27,6 +27,7 @@ export type Channel = {
   invite_only?: boolean;
   is_muted?: boolean;
   is_web_public?: boolean;
+  is_archived?: boolean;
   history_public_to_subscribers?: boolean;
   can_administer_channel_group?: GroupValue;
   can_add_subscribers_group?: GroupValue;

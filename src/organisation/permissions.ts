@@ -227,7 +227,7 @@ export function canCreateChannel(access: Access, privateChannel: boolean) {
       ] === true;
 }
 export function canJoinChannel(access: Access, channel: Channel) {
-  if (!access.me?.is_active) return false;
+  if (!access.me?.is_active || channel.is_archived) return false;
   if (access.featureLevel >= 357)
     return (
       inGroup(access, channel.can_subscribe_group) ||
@@ -242,7 +242,7 @@ export function canMembership(
   action: "add" | "remove",
   subscribed: boolean,
 ) {
-  if (!access.me?.is_active) return false;
+  if (!access.me?.is_active || channel.is_archived) return false;
   if (channel.invite_only && !subscribed && access.featureLevel < 349)
     return false;
   if (action === "remove")

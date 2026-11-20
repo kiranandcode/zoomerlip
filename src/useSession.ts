@@ -231,14 +231,20 @@ export function useSession(account: Account, active: boolean): Session {
           if (
             events.some(
               (e) =>
-                e.type === "realm_user" &&
-                (e.person as { user_id?: number; role?: number })?.user_id ===
-                  account.userId &&
-                (e.person as { role?: number }).role !== undefined,
+                (e.type === "realm_user" &&
+                  (e.person as { user_id?: number; role?: number })?.user_id ===
+                    account.userId &&
+                  (e.person as { role?: number }).role !== undefined) ||
+                (e.type === "stream" &&
+                  e.op === "update" &&
+                  e.property === "is_archived" &&
+                  e.value === false),
             )
           ) {
             // Derived capability booleans are registration data. Renew after a
             // role change instead of retaining grants from the previous role.
+            // Restoration also reloads authoritative subscriptions; metadata
+            // access alone must never add a channel to the subscribed sidebar.
             const previousQueue = queue;
             queue = "";
             void request(

@@ -142,7 +142,7 @@ export class SessionModel {
       followedTopics: (data.user_topics || [])
         .filter((t) => t.visibility_policy === 3)
         .map((t) => topicKey(t.stream_id, t.topic_name)),
-      channels: data.subscriptions || [],
+      channels: (data.subscriptions || []).filter((c) => !c.is_archived),
       users: (data.realm_users || []).map((u) => ({
         ...u,
         is_active: u.is_active !== false,
@@ -196,23 +196,34 @@ export class SessionModel {
         if (e.op === "update" && typeof e.property === "string") {
           this.state = {
             ...this.state,
-            channels: this.state.channels.map((c) =>
-              c.stream_id === e.stream_id
-                ? { ...c, [e.property as string]: e.value }
-                : c,
-            ),
+            channels: this.state.channels
+              .map((c) =>
+                c.stream_id === e.stream_id
+                  ? { ...c, [e.property as string]: e.value }
+                  : c,
+              )
+              .filter((c) => !c.is_archived),
           };
           changed = true;
         }
       } else if (e.type === "stream") {
+        if (
+          e.op === "update" &&
+          e.property === "is_archived" &&
+          e.value === true
+        )
+          for (const [id, message] of this.unread)
+            if (message.stream === e.stream_id) this.removeUnread(id);
         if (e.op === "update" && typeof e.property === "string") {
           this.state = {
             ...this.state,
-            channels: this.state.channels.map((c) =>
-              c.stream_id === e.stream_id
-                ? { ...c, [e.property as string]: e.value }
-                : c,
-            ),
+            channels: this.state.channels
+              .map((c) =>
+                c.stream_id === e.stream_id
+                  ? { ...c, [e.property as string]: e.value }
+                  : c,
+              )
+              .filter((c) => !c.is_archived),
           };
           changed = true;
         }

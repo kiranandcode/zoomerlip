@@ -81,7 +81,8 @@ const writes = [],
   events = [];
 let pending,
   eventId = 0,
-  failChannel = false;
+  failChannel = false,
+  acceptDialogs = true;
 const message = (id, subject = topic, stream = 1) => ({
   id,
   sender_id: 2,
@@ -161,8 +162,8 @@ await context.route(
         zulip_feature_level: 417,
         realm_name: u.hostname.startsWith("other") ? "Other" : "Fixture",
         realm_users: users,
-        subscriptions: channels.filter((c) =>
-          subscriptions.includes(c.stream_id),
+        subscriptions: channels.filter(
+          (c) => subscriptions.includes(c.stream_id) && !c.is_archived,
         ),
         user_topics: [
           {
@@ -269,11 +270,18 @@ await context.route(
     }
     if (path === "/user_groups") return reply(route, { user_groups: groups });
     if (path === "/users") return reply(route, { members: users });
-    if (path === "/streams") return reply(route, { streams: channels });
+    if (path === "/streams")
+      return reply(route, {
+        streams: channels.filter(
+          (c) =>
+            u.searchParams.get("exclude_archived") === "false" ||
+            !c.is_archived,
+        ),
+      });
     if (path === "/users/me/subscriptions" && req.method() === "GET")
       return reply(route, {
-        subscriptions: channels.filter((c) =>
-          subscriptions.includes(c.stream_id),
+        subscriptions: channels.filter(
+          (c) => subscriptions.includes(c.stream_id) && !c.is_archived,
         ),
       });
     if (/^\/streams\/\d+\/members$/.test(path))
@@ -284,12 +292,24 @@ await context.route(
       );
       if (req.method() === "GET") return reply(route, { stream: c });
       if (failChannel) {
-        failChannel = false;
+        ((failChannel = false), (acceptDialogs = true));
         return route.fulfill({
           status: 403,
           json: { result: "error", msg: "Synthetic permission rejection" },
           headers,
         });
+      }
+      if (req.method() === "DELETE" || body.has("is_archived")) {
+        c.is_archived = req.method() === "DELETE";
+        await reply(route, {});
+        await emit({
+          type: "stream",
+          op: "update",
+          stream_id: c.stream_id,
+          property: "is_archived",
+          value: c.is_archived,
+        });
+        return;
       }
       if (body.has("new_name")) c.name = body.get("new_name");
       if (body.has("description")) c.description = body.get("description");
@@ -379,7 +399,7 @@ await context.route(
 );
 const page = await context.newPage();
 page.on("pageerror", (e) => errors.push(e.message));
-page.on("dialog", (d) => d.accept());
+page.on("dialog", (d) => (acceptDialogs ? d.accept() : d.dismiss()));
 try {
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await expect(
@@ -512,6 +532,74 @@ try {
   await expect
     .poll(() => writes.some((w) => w.body.is_private === "true"))
     .toBe(true);
+  const archive = page.getByRole("button", {
+    name: "Archive channel",
+    exact: true,
+  });
+  await expect(archive).toBeVisible();
+  acceptDialogs = false;
+  const beforeArchive = writes.length;
+  await archive.click();
+  expect(writes.length).toBe(beforeArchive);
+  acceptDialogs = true;
+  failChannel = true;
+  await archive.click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Synthetic permission rejection",
+  );
+  await archive.click();
+  await expect(
+    page.getByRole("button", {
+      name: "public-room (private channel)",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await page
+    .getByLabel("Channel state", { exact: true })
+    .selectOption("archived");
+  await page.getByRole("button", { name: /public-room · Archived/ }).click();
+  await expect(
+    page.getByRole("button", { name: "Join channel", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Save channel settings" }),
+  ).toHaveCount(0);
+  const restore = page.getByRole("button", {
+    name: "Restore channel",
+    exact: true,
+  });
+  failChannel = true;
+  await restore.click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Synthetic permission rejection",
+  );
+  await restore.click();
+  await expect(
+    page.getByRole("button", {
+      name: "public-room (private channel)",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Channel state", { exact: true })
+    .selectOption("active");
+  await expect(
+    page.getByRole("button", {
+      name: "public-room · Private · Joined",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(
+    writes.some((w) => w.path === "/streams/2" && w.method === "DELETE"),
+  ).toBe(true);
+  expect(
+    writes.some(
+      (w) =>
+        w.path === "/streams/2" &&
+        w.method === "PATCH" &&
+        w.body.is_archived === "false",
+    ),
+  ).toBe(true);
   if (!(await page.locator("#sidebar-tools-list").isVisible()))
     await page.getByRole("button", { name: "More", exact: true }).click();
   await page
@@ -592,7 +680,7 @@ try {
   expect(errors).toEqual([]);
   expect(blocked).toEqual([]);
   console.log(
-    "PASS search races/pagination/context/keyboard, account isolation, server topic preferences and moves, channel joins/settings/privacy/errors, roles/invites/groups/defaults, 320px navigation, private membership invalidation and account removal. All writes intercepted.",
+    "PASS search races/pagination/context/keyboard, account isolation, server topic preferences and moves, channel joins/settings/privacy/errors, archive/restore cancellation and retry, live subscription recovery, roles/invites/groups/defaults, 320px navigation, private membership invalidation and account removal. All writes intercepted.",
   );
 } catch (error) {
   console.error(await page.locator(".main-pane").innerText());

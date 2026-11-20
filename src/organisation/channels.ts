@@ -5,6 +5,7 @@ import {
   canCreateChannel,
   canJoinChannel,
   canMembership,
+  isAdmin,
 } from "./permissions";
 import type { Access } from "./permissions";
 export async function mutation(
@@ -27,12 +28,32 @@ export async function mutation(
     );
   return result;
 }
-export async function channelDirectory(account: Account, signal: AbortSignal) {
+export async function channelDirectory(
+  account: Account,
+  signal: AbortSignal,
+  access?: Access,
+  archived = false,
+) {
+  if (archived && (!access || access.featureLevel < 315))
+    throw new Error(
+      "Archived channels require Zulip feature level 315 or later.",
+    );
   const [directory, subscriptions] = await Promise.all([
     request<{ streams: Channel[] }>(
       account,
       "/streams",
-      { include_public: true, include_subscribed: true },
+      {
+        include_public: true,
+        include_subscribed: true,
+        ...(access && isAdmin(access)
+          ? access.featureLevel >= 356
+            ? { include_all: true }
+            : { include_all_active: true }
+          : {}),
+        ...(access && access.featureLevel >= 315
+          ? { exclude_archived: !archived }
+          : {}),
+      },
       "GET",
       signal,
     ),
@@ -52,9 +73,33 @@ export async function channelDirectory(account: Account, signal: AbortSignal) {
       "The channel directory exceeds this client's 10,000-channel limit.",
     );
   return {
-    channels: directory.streams,
+    channels: directory.streams.filter((c) => !!c.is_archived === archived),
     subscribed: new Set(subscriptions.subscriptions.map((c) => c.stream_id)),
   };
+}
+export async function setChannelArchived(
+  account: Account,
+  access: Access,
+  channel: Channel,
+  archived: boolean,
+  signal: AbortSignal,
+) {
+  // DELETE is administrator-only in the documented archive API.
+  if (archived ? !isAdmin(access) : !canAdminChannel(access, channel))
+    throw new Error("You cannot change this channel's archive state.");
+  if (!archived && access.featureLevel < 388)
+    throw new Error(
+      "Restoring channels requires Zulip feature level 388 or later.",
+    );
+  if (!!channel.is_archived === archived)
+    throw new Error("Refresh the channel's archive state before retrying.");
+  return mutation(
+    account,
+    `/streams/${channel.stream_id}`,
+    archived ? {} : { is_archived: false },
+    archived ? "DELETE" : "PATCH",
+    signal,
+  );
 }
 export async function createChannel(
   account: Account,

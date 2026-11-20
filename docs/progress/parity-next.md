@@ -29,7 +29,7 @@ Supported means the named UI/API path exists. Partial means material upstream be
 | Polls/to-do lists | Partial | Creation, voting/completion and live events; experimental upstream submessage protocol and conservative feature gate. |
 | Search | Supported | Raw query/operators, filter controls, paging, keyboard navigation and context opening. Bounded retained results. |
 | Topics | Partial | Move/rename/resolve/follow/server mute plus separate local timed mute. Empty-topic workflows, topic deletion and full topic-policy administration remain absent. |
-| Channel directory | Partial | Join/leave/create, name/description/privacy and member editing. Archive/restore and archived discovery were missing at audit; planned next. History-policy editing and permission-policy editors remain missing. |
+| Channel directory | Partial | Join/leave/create, name/description/privacy and member editing. Archive/restore and archived discovery were missing at audit; now implemented. History-policy editing and permission-policy editors remain missing. |
 | Presence | Partial → supported for indicators | Existing polling/events/status editor; this increment adds avatar/member indicators and fixes active-to-idle expiry. [Presence schema](https://zulip.com/api/update-presence). |
 | Status | Partial | Text and selected emoji editing, online-sharing setting. Full emoji chooser absent. No expiry parameter in [status API](https://zulip.com/api/update-status); no local timer pretending to synchronize expiry. |
 | Typing/read receipts | Supported | Throttled typing, expiry, per-account isolation, server policy and feature gates. |
@@ -46,6 +46,16 @@ Avatars in messages, individual DM cards, people navigation, profiles and the ac
 
 Fixed expiry notification when an active timestamp expires while a newer idle timestamp remains. Live events remain account-scoped; access invalidation clears presence/status data. Verification: 184 unit tests, production build, intercepted presence/notification fixtures and the 10,000-member scale fixture passed (25 initial / 30 scrolled rows). The full UI suite also passed, including mobile viewport regressions. Sources: [presence](https://zulip.com/api/update-presence), [status](https://zulip.com/api/update-status).
 
+## Channel archive/restore — implemented and tested
+
+The directory separates active and archived channels. Archived discovery requires feature level 315. Administrators request all metadata-accessible channels with the versioned `include_all`/`include_all_active` parameter. Archive uses administrator-only `DELETE /streams/{id}`. Restore uses `PATCH /streams/{id}` with `is_archived=false`, requires feature level 388 and channel administration permission. Both explain consequences and require confirmation. Archived channels expose neither joining nor membership/settings mutation controls. Errors preserve the selected channel for retry.
+
+Archive events immediately remove active navigation and unread state, triggering existing cache/draft access cleanup. Restore events renew registration to load actual subscriptions; metadata access never implies membership. This increment's `useSession` change is confined to that renewal condition. It does not implement read acknowledgement.
+
+Verification: 187 unit tests across 30 files, production build, organisation browser fixtures and safety browser fixtures passed. New checks cover role/version gates, archive query parameters, cancellation without writes, permission-error retries, archived control suppression and subscription restoration. Existing revocation, terminal-authentication and cross-tab-removal checks pass. All API mutations were intercepted.
+
+Sources: [archive](https://zulip.com/api/archive-stream), [restore parameter](https://zulip.com/api/update-stream), [directory/version gates](https://zulip.com/api/get-streams), [upstream archive events](https://github.com/zulip/zulip/blob/main/zerver/actions/streams.py).
+
 ## Exact blockers and limits
 
 - Closed-app Android push needs a compatible Firebase application/project and bouncer operator support, server registration/configuration, device/token/key registration and native receipt/decryption. No such infrastructure or credentials were supplied. Existing notifications depend on a running WebView; see `notifications.md` for endpoint and protocol details. This work adds no push service.
@@ -57,3 +67,4 @@ Fixed expiry notification when an active timestamp expires while a newer idle ti
 ## Commits
 
 - `af36b7c`: mobile viewport sizing, restrained transitions and touch/native regression coverage.
+- `5579193`: live presence on avatars/member rows, expiry fix and supported/partial/missing audit.
