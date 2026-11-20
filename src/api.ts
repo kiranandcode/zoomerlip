@@ -1,5 +1,6 @@
 import type { Account, View } from "./types";
 import { boundedJSON, ResponseTooLarge } from "./responseBody";
+import { isDemo } from "./demo/account";
 export { readAccounts } from "./accountStorage";
 export class ApiError extends Error {
   constructor(
@@ -69,6 +70,13 @@ export async function request<T>(
   signal?: AbortSignal,
   timeoutMs = 30000,
 ): Promise<T> {
+  if (isDemo(account)) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    const { demoRequest } = await import("./demo/transport");
+    const data = await demoRequest(path, params, method, signal);
+    if (path === "/register") featureLevels.set(account.url, 177);
+    return data as T;
+  }
   const body = new URLSearchParams();
   const multipart = params instanceof FormData;
   if (multipart && method === "GET")

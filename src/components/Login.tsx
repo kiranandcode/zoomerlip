@@ -178,6 +178,11 @@ export function Login({
             Connects directly to your org. API keys stay in this browser’s local
             storage. Passwords are never saved.
           </p>
+          {!onClose && (
+            <a className="try-demo" href="#demo">
+              Try demo <ArrowRight size={18} />
+            </a>
+          )}
         </form>
         <span className="independent">An independent Zulip client.</span>
       </section>

@@ -1,4 +1,5 @@
 import { useNotificationNavigation } from "./notifications/navigation";
+import { demoAccount, isDemo } from "./demo/account";
 import { trackViewport } from "./viewport";
 import { navigationUnreads, prioritizeUnreadTopics } from "./unreadNavigation";
 import { OrgIcon } from "./components/OrgIcon";
@@ -116,9 +117,20 @@ function SessionBridge({
   return null;
 }
 export default function App() {
+  const [demo, setDemo] = useState(() => window.location.hash === "#demo");
+  useEffect(() => {
+    const change = () => setDemo(window.location.hash === "#demo");
+    window.addEventListener("hashchange", change);
+    return () => window.removeEventListener("hashchange", change);
+  }, []);
+  return <Client key={demo ? "demo" : "accounts"} demo={demo} />;
+}
+function Client({ demo }: { demo: boolean }) {
   useLayoutEffect(trackViewport, []);
   const muteVersion = useThreadMuteVersion();
-  const [accounts, setAccounts] = useState(readAccounts);
+  const [accounts, setAccounts] = useState(() =>
+    demo ? [demoAccount] : readAccounts(),
+  );
   const [showNav, setShowNav] = useState(false);
   const [activeId, setActiveId] = useState(() => accounts[0]?.id);
   const [sessions, setSessions] = useState<Record<string, Session>>({});
@@ -148,6 +160,7 @@ export default function App() {
   const accountRef = useRef(accounts);
   accountRef.current = accounts;
   useEffect(() => {
+    if (demo) return;
     const sync = () => {
       const old = accountRef.current;
       const next = readAccounts().map(
@@ -195,6 +208,10 @@ export default function App() {
     }
   }
   const logout = useCallback(() => {
+    if (demo) {
+      window.location.hash = "";
+      return;
+    }
     if (
       !active ||
       !window.confirm(
@@ -213,7 +230,7 @@ export default function App() {
         "Signed out here, but browser storage could not be cleared. Remove this site’s saved data before sharing this browser.",
       );
     }
-  }, [active]);
+  }, [active, demo]);
   if (!active)
     return (
       <>
@@ -226,7 +243,14 @@ export default function App() {
       </>
     );
   return (
-    <>
+    <div className={demo ? "demo-preview" : undefined}>
+      {demo && (
+        <div className="demo-banner" role="region" aria-label="Demo preview">
+          <strong>Demo</strong>
+          <span>Fictional conversations. Try sending a message.</span>
+          <button onClick={logout}>Exit demo</button>
+        </div>
+      )}
       <div className={`app-shell ${showNav ? "navigation-open" : ""}`}>
         {accounts.map((a) => (
           <SessionBridge
@@ -279,7 +303,7 @@ export default function App() {
             className="rail-button add"
             aria-label="Add organization"
             title="Add organization"
-            onClick={() => setAdding(true)}
+            onClick={() => (demo ? logout() : setAdding(true))}
           >
             <Plus size={25} />
           </button>
@@ -303,7 +327,7 @@ export default function App() {
       {adding && (
         <AddOrganization onClose={() => setAdding(false)} onLogin={onLogin} />
       )}
-    </>
+    </div>
   );
 }
 function AddOrganization({
@@ -458,12 +482,16 @@ const Workspace = memo(function Workspace({
   }, [openPanel, panel, showNav]);
   const [showTools, setShowTools] = useState(false);
   const [topicLimits, setTopicLimits] = useState<Record<number, number>>({});
-  const [view, setView] = useState<View>({ type: "home" });
+  const [view, setView] = useState<View>(() =>
+    isDemo(account)
+      ? { type: "channel", channelId: 1, topic: "Start here" }
+      : { type: "home" },
+  );
   const [navigationMode, setNavigationMode] = useState<"channels" | "dms">(
     "channels",
   );
   const [openedDms, setOpenedDms] = useState<number[][]>([]);
-  const lastChannel = useRef<View>({ type: "home" });
+  const lastChannel = useRef<View>(view);
   useEffect(() => {
     if (notificationTarget?.accountId === account.id) {
       setPanel(null);
@@ -474,7 +502,9 @@ const Workspace = memo(function Workspace({
       setShowNav(false);
     }
   }, [notificationTarget, account.id, setShowNav]);
-  const [expanded, setExpanded] = useState<number[]>([]),
+  const [expanded, setExpanded] = useState<number[]>(() =>
+      isDemo(account) ? [1] : [],
+    ),
     [topics, setTopics] = useState<Record<number, Topic[]>>({});
   const [filter, setFilter] = useState(""),
     [showMembers, setShowMembers] = useState(true),
@@ -775,14 +805,16 @@ const Workspace = memo(function Workspace({
             className={`connection-state ${session?.status === "Live" ? "connection-live" : ""}`}
             role="status"
             aria-live="polite"
-            title={session?.status || "Connecting"}
+            title={
+              isDemo(account) ? "Local demo" : session?.status || "Connecting"
+            }
           >
             <i
               className={`status-dot ${session?.status === "Live" ? "" : "offline"}`}
               aria-hidden="true"
             />
             <span className="connection-label">
-              {session?.status || "Connecting"}
+              {isDemo(account) ? "Local demo" : session?.status || "Connecting"}
             </span>
           </small>
           <button

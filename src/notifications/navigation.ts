@@ -1,3 +1,4 @@
+import { isDemo } from "../demo/account";
 import { useEffect, useRef, useState } from "react";
 import { request } from "../api";
 import { getCache } from "../cache";
@@ -50,6 +51,7 @@ export function useNotificationNavigation(
   const current = useRef({ accounts, selectAccount, onError });
   current.current = { accounts, selectAccount, onError };
   useEffect(() => {
+    if (accounts.some(isDemo)) return;
     synchronizeNativeAccounts(accounts);
   }, [accounts]);
   useEffect(() => {

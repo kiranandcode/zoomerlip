@@ -1,4 +1,5 @@
 import { clearNotificationHistory } from "./notifications/preferences";
+import { isDemo } from "./demo/account";
 import { useEffect, useRef, useState } from "react";
 import { listDrafts, clearDrafts } from "./messaging/drafts";
 import {
@@ -28,11 +29,13 @@ export function useSession(account: Account, active: boolean): Session {
       model = new SessionModel(),
       live = liveStore(account.id);
     live.clear();
-    const notifications = new NotificationDelivery(
-      account,
-      () => model.state,
-      () => activeRef.current,
-    );
+    const notifications = isDemo(account)
+      ? { clear() {}, events() {}, dispose() {} }
+      : new NotificationDelivery(
+          account,
+          () => model.state,
+          () => activeRef.current,
+        );
     const stopPresence = startPresence(
       account,
       live,

@@ -80,3 +80,12 @@ Sign release APKs on the trusted Mac and distribute them through Vibux Approver.
 Serve `dist/` over HTTPS.
 
 See [ops/](ops/) for Caddy configuration, release staging and rollback.
+
+### Demo
+
+Choose **Try demo** on the sign-in page, or open `/#demo`. The same client
+runs against fictional conversations held in the browser. Messages, reactions,
+search, edits and DMs work locally; reload to reset the conversations. No Zulip
+server, account or API key is involved. Saved accounts are not opened while the
+demo is active. Uploads, account administration and server-backed productivity
+features require a connected organization. The demo supports basic text formatting.

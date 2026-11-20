@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import { initials } from "./Avatar";
 import { imageURL } from "../imageURL";
+import { DEMO_ORIGIN } from "../demo/account";
 
 export const OrgIcon = memo(function OrgIcon({
   name,
@@ -11,7 +12,7 @@ export const OrgIcon = memo(function OrgIcon({
   url?: string;
   org: string;
 }) {
-  const src = imageURL(url, org);
+  const src = org === DEMO_ORIGIN ? "/logo.svg" : imageURL(url, org);
   const [failed, setFailed] = useState("");
   return src && failed !== src ? (
     <img

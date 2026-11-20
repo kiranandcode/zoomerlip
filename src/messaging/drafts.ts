@@ -1,4 +1,5 @@
 import { request, ApiError } from "../api";
+import { demoAccount } from "../demo/account";
 import { messagingStreamAllowed } from "./capabilities";
 import type { Account, View } from "../types";
 
@@ -12,6 +13,7 @@ export type Draft = {
   serverId?: number;
 };
 const prefix = "zoomerlip.draft.v1.";
+const demoDrafts = new Map<string, Draft>();
 export const MAX_DRAFTS = 100,
   MAX_DRAFT_TEXT = 100000,
   MAX_DRAFT_BYTES = 2_000_000;
@@ -51,6 +53,10 @@ export function validDraft(d: unknown): d is Draft {
   );
 }
 function readDraftRecords(account: string): Draft[] {
+  if (account === demoAccount.id)
+    return [...demoDrafts.values()]
+      .map((d) => structuredClone(d))
+      .sort((a, b) => b.updated - a.updated);
   const result: Draft[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
@@ -91,12 +97,27 @@ export function saveDraft(account: string, draft: Draft) {
     throw new Error(
       "Draft storage is full. Delete or sync drafts before saving more.",
     );
-  localStorage.setItem(key(account, draft.id), encoded);
+  if (account === demoAccount.id)
+    demoDrafts.set(draft.id, structuredClone(draft));
+  else localStorage.setItem(key(account, draft.id), encoded);
 }
 export function deleteDraft(account: string, id: string) {
+  if (account === demoAccount.id) {
+    demoDrafts.delete(id);
+    return;
+  }
   localStorage.removeItem(key(account, id));
 }
 export function clearDrafts(account: string, streams?: number[]) {
+  if (account === demoAccount.id) {
+    for (const [id, d] of demoDrafts)
+      if (
+        !streams ||
+        (d.view.type === "channel" && streams.includes(d.view.channelId))
+      )
+        demoDrafts.delete(id);
+    return;
+  }
   const keys: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);

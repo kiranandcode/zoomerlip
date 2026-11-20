@@ -1,3 +1,4 @@
+import { isDemo } from "../demo/account";
 import { NotificationSettings } from "../notifications/NotificationSettings";
 import { useEffect, useState } from "react";
 import { PresenceStatus, StatusEditor } from "../live/PresenceStatus";
@@ -93,7 +94,7 @@ export function ProfilePage({
           userId={user?.is_bot ? undefined : userId}
         />
         <div className="profile-actions">
-          {own && (
+          {own && !isDemo(account) && (
             <button className="primary" onClick={() => setEditing(true)}>
               Edit profile
             </button>
@@ -114,7 +115,7 @@ export function ProfilePage({
         <h1>{name}</h1>
         <PresenceStatus account={account} userId={userId} />
         {own && <StatusEditor key={account.id} account={account} />}
-        {own && (
+        {own && !isDemo(account) && (
           <NotificationSettings
             key={`notifications:${account.id}`}
             account={account}
