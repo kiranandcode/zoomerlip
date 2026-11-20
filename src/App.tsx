@@ -29,6 +29,11 @@ import {
   ArrowDown,
   UserRound,
   Palette,
+  FileText,
+  CalendarClock,
+  Settings2,
+  Compass,
+  Star,
   Lock,
 } from "lucide-react";
 import {
@@ -429,6 +434,7 @@ const Workspace = memo(function Workspace({
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [openPanel, panel, showNav]);
+  const [showTools, setShowTools] = useState(false);
   const [topicLimits, setTopicLimits] = useState<Record<number, number>>({});
   const [view, setView] = useState<View>({ type: "home" });
   useEffect(() => {
@@ -713,56 +719,6 @@ const Workspace = memo(function Workspace({
           />
         </div>
         <div className="nav-scroll">
-          {messagingViews.drafts && (
-            <button className="nav-row" onClick={() => openPanel("drafts")}>
-              Drafts
-            </button>
-          )}
-          {messagingViews.scheduled && (
-            <button className="nav-row" onClick={() => openPanel("scheduled")}>
-              Scheduled messages
-            </button>
-          )}
-          <button
-            className="nav-row"
-            aria-label="Search messages"
-            onClick={() => openPanel("search")}
-          >
-            <Search size={18} />
-            Search messages <small>/</small>
-          </button>
-          <button className="nav-row" onClick={() => openPanel("organisation")}>
-            Organisation controls
-          </button>
-          <button className="nav-row" onClick={() => openPanel("directory")}>
-            Channel directory
-          </button>
-          <button className="nav-row" onClick={() => openPanel("starred")}>
-            ★ Starred messages
-          </button>
-          <button className="nav-row" onClick={() => openPanel("mentioned")}>
-            @ Mentions
-          </button>
-          <button
-            className={`nav-row inbox ${view.type === "home" || view.type === "dm" ? "active" : ""}`}
-            onClick={() => select({ type: "home" })}
-          >
-            <MessageCircle size={18} />
-            Direct messages
-          </button>
-          <button
-            className={`nav-row my-posts ${view.type === "profile" && view.userId === account.userId ? "active" : ""}`}
-            onClick={() =>
-              select({
-                type: "profile",
-                userId: account.userId,
-                posts: "channels",
-              })
-            }
-          >
-            <UserRound size={18} />
-            My posts
-          </button>
           <div className="section-label">
             YOUR CHANNELS <span>{channels.length}</span>
           </div>
@@ -852,7 +808,13 @@ const Workspace = memo(function Workspace({
             ))}
           {session && channels.length === 0 && (
             <p className="nav-empty">
-              No subscribed channels yet. Subscribe in Zulip to see them here.
+              No channels yet.
+              <button
+                className="nav-row"
+                onClick={() => openPanel("directory")}
+              >
+                Browse channels
+              </button>
             </p>
           )}
           {session?.unreadIncomplete && (
@@ -887,6 +849,78 @@ const Workspace = memo(function Workspace({
               Search to find more people ({visiblePeople.length}).
             </p>
           )}
+        </div>
+        <div className="sidebar-tools">
+          <button
+            className="nav-row sidebar-tools-toggle"
+            aria-expanded={showTools}
+            aria-controls="sidebar-tools-list"
+            onClick={() => setShowTools(!showTools)}
+          >
+            <ChevronRight size={16} aria-hidden="true" />
+            More
+          </button>
+          <div
+            id="sidebar-tools-list"
+            className="sidebar-tools-list"
+            hidden={!showTools}
+          >
+            {messagingViews.drafts && (
+              <button className="nav-row" onClick={() => openPanel("drafts")}>
+                <FileText size={18} />
+                Drafts
+              </button>
+            )}
+            {messagingViews.scheduled && (
+              <button
+                className="nav-row"
+                onClick={() => openPanel("scheduled")}
+              >
+                <CalendarClock size={18} />
+                Scheduled messages
+              </button>
+            )}
+            <button
+              className="nav-row"
+              aria-label="Search messages"
+              onClick={() => openPanel("search")}
+            >
+              <Search size={18} />
+              Search messages <small>/</small>
+            </button>
+            <button
+              className="nav-row"
+              onClick={() => openPanel("organisation")}
+            >
+              <Settings2 size={18} />
+              Organisation controls
+            </button>
+            <button className="nav-row" onClick={() => openPanel("directory")}>
+              <Compass size={18} />
+              Channel directory
+            </button>
+            <button className="nav-row" onClick={() => openPanel("starred")}>
+              <Star size={18} />
+              Starred messages
+            </button>
+            <button className="nav-row" onClick={() => openPanel("mentioned")}>
+              <AtSign size={18} />
+              Mentions
+            </button>
+            <button
+              className={`nav-row my-posts ${view.type === "profile" && view.userId === account.userId ? "active" : ""}`}
+              onClick={() =>
+                select({
+                  type: "profile",
+                  userId: account.userId,
+                  posts: "channels",
+                })
+              }
+            >
+              <UserRound size={18} />
+              My posts
+            </button>
+          </div>
         </div>
         <footer className="profile">
           <Avatar

@@ -388,6 +388,8 @@ try {
       exact: true,
     }),
   ).toBeVisible();
+  if (!(await page.locator("#sidebar-tools-list").isVisible()))
+    await page.getByRole("button", { name: "More", exact: true }).click();
   await page
     .getByRole("button", { name: "Search messages", exact: true })
     .first()
@@ -475,6 +477,8 @@ try {
   expect(
     writes.find((w) => w.path === "/messages/300").body.propagate_mode,
   ).toBe("change_all");
+  if (!(await page.locator("#sidebar-tools-list").isVisible()))
+    await page.getByRole("button", { name: "More", exact: true }).click();
   await page
     .getByRole("button", { name: "Channel directory", exact: true })
     .click();
@@ -508,6 +512,8 @@ try {
   await expect
     .poll(() => writes.some((w) => w.body.is_private === "true"))
     .toBe(true);
+  if (!(await page.locator("#sidebar-tools-list").isVisible()))
+    await page.getByRole("button", { name: "More", exact: true }).click();
   await page
     .getByRole("button", { name: "Organisation controls", exact: true })
     .click();
@@ -545,6 +551,8 @@ try {
   await expect.poll(() => defaults.enable_stream_push_notifications).toBe(true);
   await page.setViewportSize({ width: 320, height: 640 });
   await page.getByRole("button", { name: "Toggle channels" }).click();
+  if (!(await page.locator("#sidebar-tools-list").isVisible()))
+    await page.getByRole("button", { name: "More", exact: true }).click();
   await page
     .getByRole("button", { name: "Search messages", exact: true })
     .first()
@@ -559,6 +567,8 @@ try {
   await page.getByRole("button", { name: "Back to conversation" }).click();
   await expect(panel).toHaveCount(0);
   await page.setViewportSize({ width: 1440, height: 1000 });
+  if (!(await page.locator("#sidebar-tools-list").isVisible()))
+    await page.getByRole("button", { name: "More", exact: true }).click();
   await page
     .getByRole("button", { name: "Search messages", exact: true })
     .first()

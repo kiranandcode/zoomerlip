@@ -2061,3 +2061,39 @@ html {
     min-height: 44px;
   }
 }
+
+.sidebar-tools {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  padding: 4px 8px;
+}
+.sidebar-tools-toggle {
+  gap: 8px;
+  min-height: 36px;
+}
+.sidebar-tools-toggle[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+.sidebar-tools-list {
+  max-height: min(360px, 40dvh, max(44px, calc(100dvh - 260px)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.sidebar-tools-list .nav-row {
+  gap: 10px;
+  margin-bottom: 0;
+}
+.sidebar-tools-list .nav-row > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.sidebar-tools-list .nav-row small {
+  margin-left: auto;
+}
+
+@media (pointer: coarse) {
+  .sidebar-tools-toggle {
+    min-height: 44px;
+  }
+}

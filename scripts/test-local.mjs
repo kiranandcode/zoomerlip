@@ -288,6 +288,12 @@ try {
   await expect(page.getByText(dm, { exact: true })).toBeVisible();
   expect(historyRequests).toBe(beforeRevisit);
   console.log("PASS warm navigation without a history request; draft restored");
+  if (
+    !(await page
+      .getByRole("button", { name: "My posts", exact: true })
+      .isVisible())
+  )
+    await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByRole("button", { name: "My posts", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Morgan Chen", exact: true }),
@@ -386,6 +392,12 @@ try {
   expect(overflow).toBe(false);
   await page.screenshot({ path: "test-results/mobile.png" });
   await page.getByRole("button", { name: "Toggle channels" }).click();
+  if (
+    !(await page
+      .getByRole("button", { name: "My posts", exact: true })
+      .isVisible())
+  )
+    await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByRole("button", { name: "My posts", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Morgan Chen", exact: true }),

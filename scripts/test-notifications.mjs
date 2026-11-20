@@ -352,6 +352,8 @@ try {
     )
     .toBe(true);
   // A notification for the active organisation must also dismiss a search panel.
+  if (!(await page.locator("#sidebar-tools-list").isVisible()))
+    await page.getByRole("button", { name: "More", exact: true }).click();
   await page
     .getByRole("button", { name: "Search messages", exact: true })
     .first()

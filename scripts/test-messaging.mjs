@@ -463,6 +463,7 @@ try {
   await expect(drafts.getByText(/Snippet content/).first()).toBeVisible();
   await drafts.getByRole("button", { name: "Close", exact: true }).click();
   // Sidebar navigation must use the same draft store and restore into Composer.
+  await page.getByRole("button", { name: "More", exact: true }).click();
   await page
     .locator("#channel-sidebar")
     .getByRole("button", { name: "Drafts", exact: true })

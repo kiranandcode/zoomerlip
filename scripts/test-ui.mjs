@@ -181,6 +181,15 @@ async function prepare(ctx) {
 await prepare(context);
 try {
   await page.goto(url, { waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("button", { name: "More", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await expect(
+    page.getByRole("button", { name: "Organisation controls", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".nav-scroll .section-label").first(),
+  ).toContainText("YOUR CHANNELS");
   await page
     .getByRole("button", {
       name: "private-room (private channel)",
@@ -372,6 +381,12 @@ try {
   await expect(page.locator(".conversation-header strong")).toHaveText(
     "Direct messages",
   );
+  if (
+    !(await page
+      .getByRole("button", { name: "My posts", exact: true })
+      .isVisible())
+  )
+    await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByRole("button", { name: "My posts", exact: true }).click();
   await page.getByRole("button", { name: "Edit profile", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Edit profile" });
@@ -500,6 +515,17 @@ try {
   await phone.getByRole("button", { name: "Toggle channels" }).tap();
   await expect(phone.locator(".org-rail")).toBeVisible();
   await expect(phone.locator(".main-pane")).toHaveAttribute("inert", "");
+  const utilities = phone.getByRole("button", { name: "More", exact: true });
+  expect((await utilities.boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await utilities.tap();
+  await phone
+    .getByRole("button", { name: "My posts", exact: true })
+    .scrollIntoViewIfNeeded();
+  await expect(
+    phone.getByRole("button", { name: "My posts", exact: true }),
+  ).toBeInViewport();
+  await utilities.tap();
+  await expect(phone.locator("#sidebar-tools-list")).toBeHidden();
   await phone
     .getByRole("button", { name: "Close channels", exact: true })
     .tap();

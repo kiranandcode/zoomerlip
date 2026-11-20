@@ -217,6 +217,12 @@ try {
       p.getByText("Visible fixture content", { exact: true }),
     ).toHaveCount(0);
     await expect(p.getByText("Visible Person", { exact: true })).toHaveCount(0);
+    if (
+      !(await p
+        .getByRole("button", { name: "My posts", exact: true })
+        .isVisible())
+    )
+      await p.getByRole("button", { name: "More", exact: true }).click();
     await p.getByRole("button", { name: "My posts", exact: true }).click();
     await expect(
       p.getByText("Private fixture secret", { exact: true }),
@@ -246,6 +252,12 @@ try {
     await expect(
       p.getByRole("textbox", { name: "Message", exact: true }),
     ).toHaveCount(0);
+    if (
+      !(await p
+        .getByRole("button", { name: "My posts", exact: true })
+        .isVisible())
+    )
+      await p.getByRole("button", { name: "More", exact: true }).click();
     await p.getByRole("button", { name: "My posts", exact: true }).click();
     await expect(
       p.getByText("Private fixture secret", { exact: true }),
@@ -281,6 +293,12 @@ try {
     await expect(
       p.getByRole("textbox", { name: "Message", exact: true }),
     ).toHaveCount(0);
+    if (
+      !(await p
+        .getByRole("button", { name: "My posts", exact: true })
+        .isVisible())
+    )
+      await p.getByRole("button", { name: "More", exact: true }).click();
     await p.getByRole("button", { name: "My posts", exact: true }).click();
     await expect(
       p.getByText("Private fixture secret", { exact: true }),
