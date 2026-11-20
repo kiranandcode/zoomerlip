@@ -49,6 +49,7 @@ import { SearchPanel } from "./organisation/SearchPanel";
 import "./organisation/organisation.css";
 import { clearCache, getCache } from "./cache";
 import { useMessages } from "./useMessages";
+import { useReadMessages } from "./useReadMessages";
 import { Avatar, initials } from "./components/Avatar";
 import { ProfilePage } from "./components/ProfilePage";
 import { Appearance } from "./components/AppearanceLoader";
@@ -1087,6 +1088,9 @@ const Workspace = memo(function Workspace({
         ) : (
           <Conversation
             key={JSON.stringify(view)}
+            readingEnabled={
+              !showNav && !appearance && !topicMenu && !topicEditor
+            }
             account={account}
             view={view}
             title={title}
@@ -1177,6 +1181,7 @@ const Workspace = memo(function Workspace({
   );
 });
 const Conversation = memo(function Conversation({
+  readingEnabled,
   account,
   view,
   title,
@@ -1185,6 +1190,7 @@ const Conversation = memo(function Conversation({
   recentConversations,
   onSelect,
 }: {
+  readingEnabled: boolean;
   account: Account;
   view: View;
   title: string;
@@ -1219,6 +1225,7 @@ const Conversation = memo(function Conversation({
     composer = useRef<ComposerHandle>(null),
     atBottom = useRef(saved.atBottom),
     [newBelow, setNewBelow] = useState(false);
+  useReadMessages(account, view, scroller, messages, readingEnabled, setError);
   const reply = useCallback(
     (message: Message) => composer.current?.reply(message),
     [],
