@@ -4,6 +4,7 @@ import App from "./App";
 import "./fonts.css";
 import "./style.css";
 import "./theme.css";
+import "./mobile.css";
 import { applyPreferences, readPreferences } from "./appearance";
 applyPreferences(readPreferences());
 ReactDOM.createRoot(document.getElementById("root")!).render(

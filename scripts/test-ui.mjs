@@ -610,12 +610,111 @@ try {
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+  // Model Android browser keyboard geometry separately from layout viewport size.
+  await phone.evaluate(() => {
+    const viewport = window.visualViewport;
+    window.fixtureViewport = { height: viewport.height, top: 0, scale: 1 };
+    Object.defineProperties(viewport, {
+      height: { configurable: true, get: () => window.fixtureViewport.height },
+      offsetTop: { configurable: true, get: () => window.fixtureViewport.top },
+      scale: { configurable: true, get: () => window.fixtureViewport.scale },
+    });
+    const scroller = document.querySelector(".message-scroll");
+    scroller.scrollTop = scroller.scrollHeight;
+  });
+  const resizeVisual = async (height, top = 0, scale = 1) => {
+    await phone.evaluate(
+      async ({ height, top, scale }) => {
+        window.fixtureViewport = { height, top, scale };
+        for (let i = 0; i < 10; i++) {
+          visualViewport.dispatchEvent(new Event("resize"));
+          visualViewport.dispatchEvent(new Event("scroll"));
+        }
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+      },
+      { height, top, scale },
+    );
+  };
+  const bottomGap = () =>
+    phone
+      .locator(".message-scroll")
+      .evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  await expect.poll(bottomGap).toBeLessThan(2);
+  await resizeVisual(380);
+  expect((await phone.locator(".app-shell").boundingBox()).height).toBe(380);
+  const compose = await phone.locator(".compose-area").boundingBox();
+  expect(compose.y + compose.height).toBeLessThanOrEqual(380);
+  await expect.poll(bottomGap).toBeLessThan(2);
+  await resizeVisual(640);
+  await expect.poll(bottomGap).toBeLessThan(2);
+  await phone.locator(".message-scroll").evaluate((el) => {
+    el.scrollTop = 1000;
+  });
+  const reading = () =>
+    phone.locator(".message-scroll").evaluate((el) => {
+      const top = el.getBoundingClientRect().top;
+      const row = [...el.querySelectorAll("article[data-message-id]")].find(
+        (row) => row.getBoundingClientRect().bottom > top,
+      );
+      return {
+        id: row.dataset.messageId,
+        top: row.getBoundingClientRect().top - top,
+      };
+    });
+  const anchor = await reading();
+  const formatsBefore = await phone.evaluate(() => window.dateFormats);
+  await resizeVisual(380, 12);
+  expect(await reading()).toEqual(anchor);
+  await resizeVisual(640);
+  expect(await reading()).toEqual(anchor);
+  expect(await phone.evaluate(() => window.dateFormats)).toBe(formatsBefore);
+  // Pinch zoom must leave the layout intact.
+  await resizeVisual(320, 0, 2);
+  expect((await phone.locator(".app-shell").boundingBox()).height).toBe(640);
+  await resizeVisual(640);
+  const animation = (selector) =>
+    phone
+      .locator(selector)
+      .evaluate((el) => getComputedStyle(el).animationName);
+  await phone.getByRole("button", { name: "Toggle channels" }).tap();
+  expect(await animation(".sidebar")).toBe("drawer-enter");
+  await phone.keyboard.press("Escape");
+  await more.tap();
+  expect(await animation(".composer-menu")).toBe("menu-enter");
+  await phone.keyboard.press("Escape");
+  for (const system of [false, true]) {
+    await phone.evaluate((system) => {
+      document.documentElement.dataset.motion = system ? "on" : "off";
+    }, system);
+    await phone.emulateMedia({
+      reducedMotion: system ? "reduce" : "no-preference",
+    });
+    await phone.getByRole("button", { name: "Toggle channels" }).tap();
+    expect(await animation(".sidebar")).toBe("none");
+    await phone.keyboard.press("Escape");
+    await more.tap();
+    expect(await animation(".composer-menu")).toBe("none");
+    await phone.keyboard.press("Escape");
+  }
+  await phone.evaluate(() => {
+    for (const property of ["height", "offsetTop", "scale"])
+      delete visualViewport[property];
+  });
+  await phone.setViewportSize({ width: 740, height: 360 });
+  await expect(phone.locator(".app-shell")).toHaveCSS("height", "360px");
+  await expect(box).toHaveValue("one\ntwo");
+  await phone.getByRole("button", { name: "Toggle channels" }).tap();
+  await expect(
+    phone.getByRole("button", { name: "Close channels", exact: true }),
+  ).toBeInViewport();
+  await phone.keyboard.press("Escape");
   await touch.close();
   expect(contrastFailures).toEqual([]);
   expect(errors).toEqual([]);
   expect(blocked).toEqual([]);
   console.log(
-    "PASS 300-row typing isolation; keyboard message/emoji/member navigation; focus retention; no-op edits; audience labels; 320px touch actions, picker fit and multi-line Enter; native dialog and mobile drawer dismissal; late sends; 12 theme/accent contrast combinations; thread menu keyboard/right-click, timed mute expiry and unread restoration; no external requests.",
+    "PASS visual viewport keyboard resize, reading anchor, pinch zoom, rotation and both reduced-motion settings; 300-row typing isolation; keyboard message/emoji/member navigation; focus retention; no-op edits; audience labels; 320px touch actions, picker fit and multi-line Enter; native dialog and mobile drawer dismissal; late sends; 12 theme/accent contrast combinations; thread menu keyboard/right-click, timed mute expiry and unread restoration; no external requests.",
   );
 } finally {
   await browser.close();

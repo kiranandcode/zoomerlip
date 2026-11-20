@@ -1,4 +1,5 @@
 import { useNotificationNavigation } from "./notifications/navigation";
+import { trackViewport } from "./viewport";
 import type { NotificationTarget } from "./notifications/navigation";
 import { destinationKey, draftFor, saveDraft } from "./messaging/drafts";
 import type { Destination } from "./messaging/drafts";
@@ -103,6 +104,7 @@ function SessionBridge({
   return null;
 }
 export default function App() {
+  useLayoutEffect(trackViewport, []);
   const muteVersion = useThreadMuteVersion();
   const [accounts, setAccounts] = useState(readAccounts);
   const [showNav, setShowNav] = useState(false);

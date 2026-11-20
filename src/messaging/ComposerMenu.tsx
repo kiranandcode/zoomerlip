@@ -41,20 +41,29 @@ export function ComposerMenu({
         close(false);
     };
     fit();
+    let frame = 0;
+    const scheduleFit = () => {
+      if (!frame)
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          fit();
+        });
+    };
     menu.current
       .querySelector<HTMLButtonElement>("button")
       ?.focus({ preventScroll: true });
     document.addEventListener("pointerdown", outside);
-    window.addEventListener("resize", fit);
-    window.addEventListener("scroll", fit, true);
-    window.visualViewport?.addEventListener("resize", fit);
-    window.visualViewport?.addEventListener("scroll", fit);
+    window.addEventListener("resize", scheduleFit);
+    window.addEventListener("scroll", scheduleFit, true);
+    window.visualViewport?.addEventListener("resize", scheduleFit);
+    window.visualViewport?.addEventListener("scroll", scheduleFit);
     return () => {
       document.removeEventListener("pointerdown", outside);
-      window.removeEventListener("resize", fit);
-      window.removeEventListener("scroll", fit, true);
-      window.visualViewport?.removeEventListener("resize", fit);
-      window.visualViewport?.removeEventListener("scroll", fit);
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", scheduleFit);
+      window.removeEventListener("scroll", scheduleFit, true);
+      window.visualViewport?.removeEventListener("resize", scheduleFit);
+      window.visualViewport?.removeEventListener("scroll", scheduleFit);
     };
   }, [open]);
   return (

@@ -54,7 +54,15 @@ public class MainActivityTest {
                 .setInsets(android.view.WindowInsets.Type.systemBars(), android.graphics.Insets.of(4, 20, 4, 24))
                 .setInsets(android.view.WindowInsets.Type.ime(), android.graphics.Insets.of(0, 0, 0, 260)).build();
             root.dispatchApplyWindowInsets(insets);
+            // Repeated keyboard sizes must replace padding, never accumulate it.
+            root.dispatchApplyWindowInsets(insets);
             assertEquals(260, root.getPaddingBottom());
+            android.view.WindowInsets hidden = new android.view.WindowInsets.Builder()
+                .setInsets(android.view.WindowInsets.Type.systemBars(), android.graphics.Insets.of(4, 20, 4, 24))
+                .setInsets(android.view.WindowInsets.Type.ime(), android.graphics.Insets.NONE).build();
+            root.dispatchApplyWindowInsets(hidden);
+            assertEquals(24, root.getPaddingBottom());
+            assertSame(web, root.getChildAt(0));
             assertEquals(20, root.getPaddingTop());
             activity.onBackPressed();
             String back = org.robolectric.Shadows.shadowOf(web).getLastEvaluatedJavascript();
