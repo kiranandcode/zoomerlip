@@ -68,7 +68,7 @@ public class MainActivityTest {
             String back = org.robolectric.Shadows.shadowOf(web).getLastEvaluatedJavascript();
             assertTrue(back.contains("dialog[open]"));
             assertTrue(back.contains("zoomerlip-home"));
-            assertTrue(back.contains("Close channels"));
+            assertTrue(back.contains(".sidebar.mobile-open .mobile-close"));
         }
     }
 }

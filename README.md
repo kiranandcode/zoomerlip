@@ -71,6 +71,8 @@ Requires Java 17 and Android SDK 35.
 
 The Android app bundles the same client. Notifications work while its WebView is running. Reliable closed-app push still requires a compatible Firebase/bouncer setup; it is not implemented. Physical-device testing has not been performed.
 
+Web deployments do not update the installed Android app. Install a new APK through Vibux Approver to receive client changes.
+
 Sign release APKs on the trusted Mac and distribute them through Vibux Approver.
 
 ## Deploy

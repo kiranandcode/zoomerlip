@@ -1,5 +1,18 @@
 // Synthetic accounts only; all external traffic is intercepted.
 import { chromium, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
+const nativeSource = readFileSync(
+  new URL(
+    "../android/app/src/main/java/me/kirancodes/zoomerlip/MainActivity.java",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const nativeBack = JSON.parse(
+  nativeSource.match(
+    /web\.evaluateJavascript\(("(?:\\.|[^"\\])*"), result ->/,
+  )[1],
+);
 const url = process.env.ZOOMERLIP_TEST_URL || "http://127.0.0.1:4185";
 if (!["localhost", "127.0.0.1"].includes(new URL(url).hostname))
   throw new Error("Local only");
@@ -146,14 +159,22 @@ try {
     await expect(
       side.getByRole("button", { name: "Alice", exact: true }),
     ).toHaveAttribute("aria-current", "page");
+    if (mobile) {
+      expect(await page.evaluate(nativeBack)).toBe(true);
+      await expect(page.locator(".sidebar")).not.toHaveClass(/mobile-open/);
+      await expect(page.locator(".conversation-header")).toContainText("Alice");
+      await drawer();
+    }
     await side.getByRole("button", { name: "Bob", exact: true }).click();
     await expect(page.locator(".conversation-header")).toContainText("Bob");
     await page.screenshot({
       path: `/tmp/zoomerlip-dm-${mobile ? "mobile" : "desktop"}.png`,
     });
-    await page
-      .getByRole("button", { name: "Back to direct messages", exact: true })
-      .click();
+    if (mobile) expect(await page.evaluate(nativeBack)).toBe(true);
+    else
+      await page
+        .getByRole("button", { name: "Back to direct messages", exact: true })
+        .click();
     await expect(page.locator(".conversation-header")).toContainText(
       "Direct messages",
     );

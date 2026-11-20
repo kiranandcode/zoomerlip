@@ -189,7 +189,7 @@ public final class MainActivity extends Activity {
     }
     @Override public void onBackPressed() { handleBack(); }
     private void handleBack() {
-        web.evaluateJavascript("(() => { const d=document.querySelector('dialog[open]'); if(d){d.dispatchEvent(new Event('cancel',{cancelable:true}));return true;} const m=document.querySelector('[role=menu]'); if(m){m.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return true;} const n=document.querySelector('.sidebar.mobile-open [aria-label=\"Close channels\"]'); if(n && n.getClientRects().length){n.click();return true;} const p=document.querySelector('.profile-back'); if(p){p.click();return true;} if(document.querySelector('.composer')){window.dispatchEvent(new Event('zoomerlip-home'));return true;} return false; })()", result -> {
+        web.evaluateJavascript("(() => { const d=document.querySelector('dialog[open]'); if(d){d.dispatchEvent(new Event('cancel',{cancelable:true}));return true;} const m=document.querySelector('[role=menu]'); if(m){m.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return true;} const n=document.querySelector('.sidebar.mobile-open .mobile-close'); if(n && n.getClientRects().length){n.click();return true;} const p=document.querySelector('.profile-back'); if(p){p.click();return true;} if(document.querySelector('.composer')){window.dispatchEvent(new Event('zoomerlip-home'));return true;} return false; })()", result -> {
             if (!"true".equals(result)) { if (web.canGoBack()) web.goBack(); else moveTaskToBack(true); }
         });
     }
