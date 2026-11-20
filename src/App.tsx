@@ -679,18 +679,21 @@ const Workspace = memo(function Workspace({
             title={orgLabel(session?.name || account.name, account.url)}
           >
             {session?.name || account.name}
-            <span className="org-host">{new URL(account.url).host}</span>
-            <small role="status" aria-live="polite">
-              <i
-                className={
-                  session?.status === "Live"
-                    ? "status-dot"
-                    : "status-dot offline"
-                }
-              />
-              {session?.status || "Connecting"}
-            </small>
           </span>
+          <small
+            className={`connection-state ${session?.status === "Live" ? "connection-live" : ""}`}
+            role="status"
+            aria-live="polite"
+            title={session?.status || "Connecting"}
+          >
+            <i
+              className={`status-dot ${session?.status === "Live" ? "" : "offline"}`}
+              aria-hidden="true"
+            />
+            <span className="connection-label">
+              {session?.status || "Connecting"}
+            </span>
+          </small>
           <button
             ref={navClose}
             className="icon-button mobile-close"
@@ -704,7 +707,7 @@ const Workspace = memo(function Workspace({
           <Search size={15} />
           <input
             aria-label="Find channels or people"
-            placeholder="Find a channel or person"
+            placeholder="Find channels or people"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />

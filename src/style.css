@@ -184,16 +184,6 @@ p {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.org-name small {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 5px;
-  font-family: "DM Sans", sans-serif;
-  font-size: max(11px, calc(var(--message-size, 15px) * 0.78));
-  font-weight: 450;
-  color: var(--muted);
-}
 .status-dot {
   width: 6px;
   height: 6px;
