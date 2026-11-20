@@ -107,7 +107,9 @@ export const TopicNavRow = memo(function TopicNavRow({
         }}
         onClick={() => select({ type: "channel", channelId, topic })}
       >
-        <span aria-hidden="true">↳</span>
+        <span className="topic-marker" aria-hidden="true">
+          ↳
+        </span>
         <span className="topic-name">{label}</span>
         {muted && <BellOff size={12} aria-hidden="true" />}
         {unread > 0 && (

@@ -250,7 +250,7 @@ button:hover {
   padding: 6px 7px;
   color: var(--muted);
 }
-.topic span {
+.topic-marker {
   color: var(--muted);
 }
 .topic.active {

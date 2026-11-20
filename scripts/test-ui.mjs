@@ -197,6 +197,66 @@ try {
   const topic = topicRow.locator("button.topic");
   await expect(topic).toHaveAccessibleName("Thread, 3 unread");
   await expect(topicRow.locator(".thread-badge")).toHaveText("3");
+  // Check rendered badge colours, not just palette tokens: child selectors
+  // previously overwrote the badge ink and unread topic name.
+  const badgeFailures = await topicRow.evaluate((row) => {
+    const root = document.documentElement;
+    const saved = {
+      theme: root.dataset.theme,
+      accent: root.dataset.accent,
+      style: root.getAttribute("style"),
+    };
+    const failures = [];
+    const luminance = (rgb) => {
+      const c = rgb
+        .match(/[\d.]+/g)
+        .slice(0, 3)
+        .map(Number)
+        .map((v) => {
+          v /= 255;
+          return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+        });
+      return c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
+    };
+    const check = (name) => {
+      const badge = getComputedStyle(row.querySelector(".thread-badge"));
+      const a = luminance(badge.color),
+        b = luminance(badge.backgroundColor);
+      const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      if (ratio < 4.5) failures.push({ name, ratio });
+      if (
+        getComputedStyle(row.querySelector(".topic-name")).color !==
+        getComputedStyle(row.querySelector(".topic")).color
+      )
+        failures.push({
+          name,
+          problem: "Unread topic name does not inherit its text colour",
+        });
+    };
+    try {
+      for (const theme of ["graphite", "midnight", "light"])
+        for (const accent of ["mint", "lime", "violet", "coral"]) {
+          root.dataset.theme = theme;
+          root.dataset.accent = accent;
+          check(`${theme}/${accent}`);
+        }
+      for (const [accent, ink] of [
+        ["#9696ff", "#000000"],
+        ["#312060", "#ffffff"],
+      ]) {
+        root.style.setProperty("--accent", accent);
+        root.style.setProperty("--accent-ink", ink);
+        check(`custom/${accent}`);
+      }
+    } finally {
+      root.dataset.theme = saved.theme;
+      root.dataset.accent = saved.accent;
+      if (saved.style === null) root.removeAttribute("style");
+      else root.setAttribute("style", saved.style);
+    }
+    return failures;
+  });
+  expect(badgeFailures).toEqual([]);
   await topic.click({ button: "right" });
   await expect(
     page.getByRole("menu", { name: "Thread options: Thread", exact: true }),
