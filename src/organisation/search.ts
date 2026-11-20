@@ -8,7 +8,7 @@ export type SearchFilters = {
   after: string;
   before: string;
   attachment: boolean;
-  special?: "starred" | "mentioned";
+  special?: "starred" | "mentioned" | "unread";
 };
 export const emptySearch: SearchFilters = {
   text: "",

@@ -1,5 +1,6 @@
 import { useNotificationNavigation } from "./notifications/navigation";
 import { trackViewport } from "./viewport";
+import { navigationUnreads, prioritizeUnreadTopics } from "./unreadNavigation";
 import { OrgIcon } from "./components/OrgIcon";
 import type { NotificationTarget } from "./notifications/navigation";
 import { destinationKey, draftFor, saveDraft } from "./messaging/drafts";
@@ -133,23 +134,10 @@ export default function App() {
     () =>
       Object.fromEntries(
         accounts.map((a) => {
-          const session = sessions[a.id];
-          if (!session) return [a.id, 0];
-          const local = currentThreadMutes(a.id);
-          const removed = Object.keys(local).reduce((sum, key) => {
-            try {
-              const [id, topic] = JSON.parse(key);
-              return (
-                sum +
-                (serverMutesTopic(session, id, topic)
-                  ? 0
-                  : session.topicUnreads[key] || 0)
-              );
-            } catch {
-              return sum;
-            }
-          }, 0);
-          return [a.id, Math.max(0, session.unread - removed)];
+          return [
+            a.id,
+            navigationUnreads(sessions[a.id], currentThreadMutes(a.id)).total,
+          ];
         }),
       ),
     [accounts, sessions, muteVersion],
@@ -386,6 +374,7 @@ const Workspace = memo(function Workspace({
     | "search"
     | "starred"
     | "mentioned"
+    | "unread"
     | "directory"
     | "organisation"
     | "drafts"
@@ -398,6 +387,7 @@ const Workspace = memo(function Workspace({
         | "search"
         | "starred"
         | "mentioned"
+        | "unread"
         | "directory"
         | "organisation"
         | "drafts"
@@ -405,7 +395,7 @@ const Workspace = memo(function Workspace({
     ) => {
       const main = document.querySelector<HTMLElement>(".main-pane");
       if (main) main.inert = false;
-      if (["search", "starred", "mentioned"].includes(next))
+      if (["search", "starred", "mentioned", "unread"].includes(next))
         document
           .querySelector<HTMLInputElement>(
             '.main-pane [aria-label="Search message text"]',
@@ -477,6 +467,26 @@ const Workspace = memo(function Workspace({
     [topicError, setTopicError] = useState("");
   const search = useDeferredValue(filter.toLowerCase());
   const channels = session?.channels || [];
+  const unreadNavigation = useMemo(
+    () => navigationUnreads(session, threadMutes),
+    [session, threadMutes],
+  );
+  const navigationTopics = useMemo(
+    () =>
+      Object.fromEntries(
+        channels
+          .filter((channel) => expanded.includes(channel.stream_id))
+          .map((channel) => [
+            channel.stream_id,
+            prioritizeUnreadTopics(
+              channel.stream_id,
+              topics[channel.stream_id],
+              unreadNavigation.topics[channel.stream_id],
+            ),
+          ]),
+      ),
+    [channels, expanded, topics, unreadNavigation],
+  );
   const menuChannel = channels.find(
     (channel) => channel.stream_id === channelMenu?.channelId,
   );
@@ -752,6 +762,19 @@ const Workspace = memo(function Workspace({
           />
         </div>
         <div className="nav-scroll">
+          {unreadNavigation.total > 0 && (
+            <button
+              className="nav-row unread-shortcut"
+              aria-label={`Find unread messages, ${unreadNavigation.total} unread`}
+              onClick={() => openPanel("unread")}
+            >
+              <MessageCircle size={18} aria-hidden="true" />
+              Unread messages
+              <span className="thread-badge" aria-hidden="true">
+                {unreadNavigation.total > 99 ? "99+" : unreadNavigation.total}
+              </span>
+            </button>
+          )}
           <div className="section-label">
             YOUR CHANNELS <span>{channels.length}</span>
           </div>
@@ -761,6 +784,7 @@ const Workspace = memo(function Workspace({
               <div key={channel.stream_id}>
                 <ChannelNavRow
                   channel={channel}
+                  unread={unreadNavigation.channels[channel.stream_id] || 0}
                   expanded={expanded.includes(channel.stream_id)}
                   selected={
                     view.type === "channel" &&
@@ -775,7 +799,7 @@ const Workspace = memo(function Workspace({
                     {!topics[channel.stream_id] && (
                       <small>Loading threads…</small>
                     )}
-                    {topics[channel.stream_id]
+                    {navigationTopics[channel.stream_id]
                       ?.slice(0, topicLimits[channel.stream_id] || 20)
                       .map((topic) => {
                         const key = topicKey(channel.stream_id, topic.name),
@@ -808,7 +832,7 @@ const Workspace = memo(function Workspace({
                           />
                         );
                       })}
-                    {(topics[channel.stream_id]?.length || 0) >
+                    {(navigationTopics[channel.stream_id]?.length || 0) >
                       (topicLimits[channel.stream_id] || 20) && (
                       <button
                         className="topic"
@@ -820,7 +844,8 @@ const Workspace = memo(function Workspace({
                           }))
                         }
                       >
-                        Show more threads ({topics[channel.stream_id].length})
+                        Show more threads (
+                        {navigationTopics[channel.stream_id].length})
                       </button>
                     )}
                     <button
@@ -1035,7 +1060,9 @@ const Workspace = memo(function Workspace({
                         ? "Starred messages"
                         : panel === "mentioned"
                           ? "Mentions"
-                          : title}
+                          : panel === "unread"
+                            ? "Unread messages"
+                            : title}
           </strong>
           {panel && (
             <button
@@ -1130,6 +1157,22 @@ const Workspace = memo(function Workspace({
             channels={channels}
             featureLevel={getFeatureLevel(account.url)}
             special={panel === "search" ? undefined : panel}
+            visibleMessage={
+              panel === "unread"
+                ? (message) =>
+                    !session.mutedUsers.includes(message.sender_id) &&
+                    (message.type !== "stream" ||
+                      message.stream_id === undefined ||
+                      (!threadMutes[
+                        topicKey(message.stream_id, message.subject)
+                      ] &&
+                        !serverMutesTopic(
+                          session,
+                          message.stream_id,
+                          message.subject,
+                        )))
+                : undefined
+            }
             onSelect={select}
           />
         ) : (

@@ -1645,6 +1645,31 @@ button:hover {
   color: var(--muted);
   opacity: 0.7;
 }
+.channel-row.unread {
+  position: relative;
+}
+.channel-row.unread::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  width: 3px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--text);
+}
+.channel-row.unread .channel-name {
+  color: var(--text);
+  font-weight: 700;
+  opacity: 1;
+}
+.channel-name .thread-badge {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.unread-shortcut {
+  color: var(--text);
+  font-weight: 700;
+}
 .topic-options:hover {
   background: var(--hover);
   color: var(--text);

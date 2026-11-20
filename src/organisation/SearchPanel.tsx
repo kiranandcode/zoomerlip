@@ -15,11 +15,13 @@ export function SearchPanel({
   featureLevel,
   special,
   onSelect,
+  visibleMessage,
 }: {
   account: Account;
   channels: Channel[];
   featureLevel: number;
-  special?: "starred" | "mentioned";
+  special?: "starred" | "mentioned" | "unread";
+  visibleMessage?: (message: Message) => boolean;
   onSelect: (view: View) => void;
 }) {
   const [filters, setFilters] = useState<SearchFilters>({
@@ -110,6 +112,9 @@ export function SearchPanel({
         .querySelector<HTMLElement>(`[data-search-id="${context.id}"]`)
         ?.focus();
   }, [context]);
+  const shownMessages =
+    context?.messages ||
+    (visibleMessage ? messages.filter(visibleMessage) : messages);
   return (
     <section className="organisation-panel" aria-label="Message search">
       <form
@@ -211,9 +216,7 @@ export function SearchPanel({
           newest matches.
         </p>
       )}
-      {!busy && !(context?.messages || messages).length && (
-        <p>No matching messages.</p>
-      )}
+      {!busy && !shownMessages.length && <p>No matching messages.</p>}
       <div
         className="search-results"
         aria-label={context ? "Result in context" : "Search results"}
@@ -244,7 +247,7 @@ export function SearchPanel({
           ]?.focus();
         }}
       >
-        {(context?.messages || messages).map((m) => (
+        {shownMessages.map((m) => (
           <article
             tabIndex={0}
             key={m.id}

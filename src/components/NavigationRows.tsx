@@ -15,6 +15,7 @@ export const ChannelNavRow = memo(function ChannelNavRow({
   channel,
   expanded,
   selected,
+  unread = 0,
   toggle,
   open,
   menu,
@@ -22,6 +23,7 @@ export const ChannelNavRow = memo(function ChannelNavRow({
   channel: Channel;
   expanded: boolean;
   selected: boolean;
+  unread?: number;
   toggle: (id: number) => void;
   open: (id: number) => void;
   menu: (target: ChannelMenuTarget) => void;
@@ -37,7 +39,7 @@ export const ChannelNavRow = memo(function ChannelNavRow({
   };
   return (
     <div
-      className={`channel-row ${selected ? "current" : ""} ${channel.is_muted ? "muted" : ""}`}
+      className={`channel-row ${selected ? "current" : ""} ${channel.is_muted ? "muted" : ""} ${unread ? "unread" : ""}`}
       onContextMenu={(event) => {
         event.preventDefault();
         openMenu(
@@ -64,6 +66,7 @@ export const ChannelNavRow = memo(function ChannelNavRow({
             ? `${channel.name} (private channel)`
             : channel.name
         }
+        aria-description={unread ? `${unread} unread messages` : undefined}
         onClick={() => open(channel.stream_id)}
         onKeyDown={(event) => {
           if (
@@ -78,6 +81,11 @@ export const ChannelNavRow = memo(function ChannelNavRow({
         {channel.invite_only ? <Lock size={18} /> : <Hash size={18} />}
         <span>{channel.name}</span>
         {channel.is_muted && <BellOff size={13} aria-label="Muted" />}
+        {unread > 0 && (
+          <span className="thread-badge" aria-hidden="true">
+            {unread > 99 ? "99+" : unread}
+          </span>
+        )}
       </button>
       <button
         className="topic-options channel-options"
