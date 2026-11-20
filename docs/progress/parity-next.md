@@ -67,4 +67,12 @@ Sources: [archive](https://zulip.com/api/archive-stream), [restore parameter](ht
 ## Commits
 
 - `af36b7c`: mobile viewport sizing, restrained transitions and touch/native regression coverage.
+
+## Read state and channel preferences
+
+Conversation views now acknowledge messages after 600 ms of visibility in a focused, uncovered pane. Loading history does not mark it read. Requests are batched, cancelled on navigation/account removal, and retried with backoff on failure. The event queue remains authoritative for unread counts. Explicitly marking a visible message unread is preserved until it leaves and re-enters the viewport.
+
+Channel right-click, keyboard context menus and mobile ellipsis buttons provide mute/unmute and settings. Muted channels fade and show a muted indicator. The directory supports confirmed bulk muting of joined channels and unfollowing followed topics. It rechecks the confirmed selection, preserves subscriptions and unrelated topic preferences, supports cancellation, and reports partial failures without replaying earlier writes. These controls do not disable automatic following of future topics.
+
+Channel management loads on demand. Verification: 201 unit tests passed. Intercepted browser fixtures cover desktop and 320 px touch menus, mute/unmute, bulk cancellation, topic-policy preservation, visible read marking and live unread badges, including messages arriving behind an open mobile drawer. Existing navigation, organisation, notification and access-revocation fixtures passed during integration. Android release unit tests, lint and assembly passed; physical-device testing remains unperformed.
 - `5579193`: live presence on avatars/member rows, expiry fix and supported/partial/missing audit.

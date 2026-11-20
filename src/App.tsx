@@ -5,6 +5,8 @@ import { destinationKey, draftFor, saveDraft } from "./messaging/drafts";
 import type { Destination } from "./messaging/drafts";
 import { quoteMessage } from "./messaging/actions";
 import {
+  lazy,
+  Suspense,
   memo,
   useCallback,
   useDeferredValue,
@@ -42,7 +44,6 @@ import {
   messagingViews,
 } from "./organisation/MessagingNavigation";
 import { OrganisationPanel } from "./organisation/OrganisationPanel";
-import { ChannelDirectory } from "./organisation/ChannelDirectory";
 import { useAccess } from "./organisation/useAccess";
 import { canTopic } from "./organisation/permissions";
 import { TopicEditor } from "./organisation/TopicEditor";
@@ -68,6 +69,8 @@ import {
   useThreadMuteVersion,
 } from "./topicPreferences";
 import { TopicMenu } from "./components/TopicMenu";
+import { ChannelMenu } from "./components/ChannelMenu";
+import type { ChannelMenuTarget } from "./components/ChannelMenu";
 import type { TopicMenuTarget } from "./components/TopicMenu";
 import { clearUploadCache } from "./uploads";
 import type { RecentConversation } from "./types";
@@ -86,6 +89,11 @@ import { ChannelNavRow, TopicNavRow } from "./components/NavigationRows";
 import { orgLabel } from "./orgLabel";
 import type { ReadingAnchor } from "./scrollAnchor";
 const memberCollator = new Intl.Collator();
+const ChannelDirectory = lazy(() =>
+  import("./organisation/ChannelDirectory").then((module) => ({
+    default: module.ChannelDirectory,
+  })),
+);
 const errorText = (e: unknown) =>
   e instanceof Error ? e.message : "Something went wrong.";
 function SessionBridge({
@@ -359,6 +367,15 @@ const Workspace = memo(function Workspace({
   const threadMutes = useThreadMutes(account.id);
   const [topicMenu, setTopicMenu] = useState<TopicMenuTarget | null>(null);
   const closeTopicMenu = useCallback(() => setTopicMenu(null), []);
+  const [channelMenu, setChannelMenu] = useState<ChannelMenuTarget | null>(
+    null,
+  );
+  const closeChannelMenu = useCallback(() => setChannelMenu(null), []);
+  const openChannelMenu = useCallback((target: ChannelMenuTarget) => {
+    setTopicMenu(null);
+    setChannelMenu(target);
+  }, []);
+  const [directoryChannelId, setDirectoryChannelId] = useState<number>();
   const [appearance, setAppearance] = useState(false);
   const [panel, setPanel] = useState<
     | "search"
@@ -390,6 +407,7 @@ const Workspace = memo(function Workspace({
           )
           ?.focus();
       setPanel(next);
+      setDirectoryChannelId(undefined);
       setShowNav(false);
     },
     [setShowNav],
@@ -454,6 +472,12 @@ const Workspace = memo(function Workspace({
     [topicError, setTopicError] = useState("");
   const search = useDeferredValue(filter.toLowerCase());
   const channels = session?.channels || [];
+  const menuChannel = channels.find(
+    (channel) => channel.stream_id === channelMenu?.channelId,
+  );
+  useEffect(() => {
+    if (channelMenu && !menuChannel) setChannelMenu(null);
+  }, [channelMenu, menuChannel]);
   const users = useMemo(
     () =>
       (session?.users || emptyUsers).filter(
@@ -622,6 +646,7 @@ const Workspace = memo(function Workspace({
     (next: View) => {
       setPanel(null);
       setView(next);
+      setChannelMenu(null);
       setShowNav(false);
     },
     [setShowNav],
@@ -738,6 +763,7 @@ const Workspace = memo(function Workspace({
                   }
                   toggle={toggleChannel}
                   open={openChannel}
+                  menu={openChannelMenu}
                 />
                 {expanded.includes(channel.stream_id) && (
                   <div className="topics">
@@ -1077,11 +1103,21 @@ const Workspace = memo(function Workspace({
             users={session.users}
           />
         ) : panel === "directory" ? (
-          <ChannelDirectory
-            account={account}
-            access={access}
-            users={session.users}
-          />
+          <Suspense
+            fallback={
+              <div className="empty-state" role="status">
+                Loading channels…
+              </div>
+            }
+          >
+            <ChannelDirectory
+              key={directoryChannelId ?? "directory"}
+              initialChannelId={directoryChannelId}
+              account={account}
+              access={access}
+              users={session.users}
+            />
+          </Suspense>
         ) : panel ? (
           <SearchPanel
             key={panel}
@@ -1095,7 +1131,11 @@ const Workspace = memo(function Workspace({
           <Conversation
             key={JSON.stringify(view)}
             readingEnabled={
-              !showNav && !appearance && !topicMenu && !topicEditor
+              !showNav &&
+              !appearance &&
+              !topicMenu &&
+              !topicEditor &&
+              !channelMenu
             }
             account={account}
             view={view}
@@ -1107,6 +1147,19 @@ const Workspace = memo(function Workspace({
           />
         )}
       </main>
+      {channelMenu && menuChannel && !session?.locked && (
+        <ChannelMenu
+          account={account}
+          channel={menuChannel}
+          target={channelMenu}
+          featureLevel={access.featureLevel}
+          onClose={closeChannelMenu}
+          onSettings={() => {
+            openPanel("directory");
+            setDirectoryChannelId(menuChannel.stream_id);
+          }}
+        />
+      )}
       {topicMenu && !session?.locked && (
         <TopicMenu
           account={account}

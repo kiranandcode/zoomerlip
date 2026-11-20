@@ -56,6 +56,8 @@ Message search, persistent drafts, file uploads, mention and emoji completion, m
 
 Features depend on the organisation's server version and permissions. Draft sync preserves conflicting copies. Scheduling keeps the original draft; sending it again creates a separate message. Timed thread mutes remain local to the browser.
 
+Use a channel's `…` menu to mute or unmute it. Under **More → Channel directory → Channel and topic preferences**, you can mute all joined channels or unfollow all followed topics. Both keep channel subscriptions intact. Messages become read after they remain visible briefly in an active conversation.
+
 Coverage and limitations: [messaging](docs/progress/messaging.md), [organisation controls](docs/progress/organisation.md), [notifications](docs/progress/notifications.md).
 
 ## Android

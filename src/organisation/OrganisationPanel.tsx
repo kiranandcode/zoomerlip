@@ -27,7 +27,7 @@ import {
 } from "./management";
 import type { Invite } from "./management";
 import { useOperation, useResource } from "./useResource";
-import { OperationStatus } from "./ChannelDirectory";
+import { OperationStatus } from "./OperationStatus";
 import { invalidateOrganisation } from "./lifecycle";
 export function OrganisationPanel({
   account,

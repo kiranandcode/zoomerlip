@@ -19,27 +19,21 @@ import {
 } from "./channels";
 import { useOperation, useResource } from "./useResource";
 import { invalidateOrganisation } from "./lifecycle";
-export function OperationStatus({
-  operation,
-}: {
-  operation: ReturnType<typeof useOperation>;
-}) {
-  return (
-    <>
-      {operation.busy && <p role="status">Saving…</p>}
-      {operation.error && <p role="alert">{operation.error}</p>}
-      {operation.notice && <p role="status">{operation.notice}</p>}
-    </>
-  );
-}
+import {
+  BulkChannelPreferences,
+  ChannelMuteControl,
+} from "./ChannelPreferences";
+import { OperationStatus } from "./OperationStatus";
 export function ChannelDirectory({
   account,
   access,
   users,
+  initialChannelId,
 }: {
   account: Account;
   access: Access;
   users: User[];
+  initialChannelId?: number;
 }) {
   const [archived, setArchived] = useState(false);
   const resource = useResource(
@@ -49,13 +43,19 @@ export function ChannelDirectory({
   );
   const [filter, setFilter] = useState(""),
     [limit, setLimit] = useState(50),
-    [selected, setSelected] = useState<number | null>(null),
+    [selected, setSelected] = useState<number | null>(initialChannelId ?? null),
     [creating, setCreating] = useState(false);
   const selectedChannel = resource.data?.channels.find(
     (c) => c.stream_id === selected,
   );
   return (
     <section className="organisation-panel" aria-label="Channel directory">
+      <BulkChannelPreferences
+        key={account.id}
+        account={account}
+        featureLevel={access.featureLevel}
+        active={!!access.me?.is_active}
+      />
       {access.featureLevel >= 315 && (
         <label className="organisation-form">
           Channel state
@@ -154,6 +154,7 @@ export function ChannelDirectory({
                   {resource.data!.subscribed.has(c.stream_id)
                     ? " · Joined"
                     : ""}
+                  {c.is_muted ? " · Muted" : ""}
                 </button>
               ))}
           </div>
@@ -364,6 +365,13 @@ function ChannelDetails({
           : "New subscribers can read channel history."}
       </p>
       <OperationStatus operation={op} />
+      {subscribed && !channel.is_archived && (
+        <ChannelMuteControl
+          account={account}
+          channel={channel}
+          featureLevel={access.featureLevel}
+        />
+      )}
       {(channel.is_archived
         ? canAdminChannel(access, channel)
         : isAdmin(access)) && (

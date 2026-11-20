@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { Channel, View } from "../types";
 import type { TopicMenuTarget } from "./TopicMenu";
+import type { ChannelMenuTarget } from "./ChannelMenu";
 
 export const ChannelNavRow = memo(function ChannelNavRow({
   channel,
@@ -16,15 +17,38 @@ export const ChannelNavRow = memo(function ChannelNavRow({
   selected,
   toggle,
   open,
+  menu,
 }: {
   channel: Channel;
   expanded: boolean;
   selected: boolean;
   toggle: (id: number) => void;
   open: (id: number) => void;
+  menu: (target: ChannelMenuTarget) => void;
 }) {
+  const openMenu = (trigger: HTMLElement, x?: number, y?: number) => {
+    const box = trigger.getBoundingClientRect();
+    menu({
+      channelId: channel.stream_id,
+      trigger,
+      x: x ?? box.left,
+      y: y ?? box.bottom,
+    });
+  };
   return (
-    <div className={`channel-row ${selected ? "current" : ""}`}>
+    <div
+      className={`channel-row ${selected ? "current" : ""} ${channel.is_muted ? "muted" : ""}`}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        openMenu(
+          event.currentTarget.querySelector<HTMLButtonElement>(
+            ".channel-name",
+          )!,
+          event.clientX,
+          event.clientY,
+        );
+      }}
+    >
       <button
         className="expand"
         aria-label={`${expanded ? "Collapse" : "Expand"} ${channel.name}`}
@@ -41,9 +65,27 @@ export const ChannelNavRow = memo(function ChannelNavRow({
             : channel.name
         }
         onClick={() => open(channel.stream_id)}
+        onKeyDown={(event) => {
+          if (
+            event.key === "ContextMenu" ||
+            (event.shiftKey && event.key === "F10")
+          ) {
+            event.preventDefault();
+            openMenu(event.currentTarget);
+          }
+        }}
       >
         {channel.invite_only ? <Lock size={18} /> : <Hash size={18} />}
         <span>{channel.name}</span>
+        {channel.is_muted && <BellOff size={13} aria-label="Muted" />}
+      </button>
+      <button
+        className="topic-options channel-options"
+        aria-label={`Channel options: ${channel.name}`}
+        aria-haspopup="menu"
+        onClick={(event) => openMenu(event.currentTarget)}
+      >
+        <MoreHorizontal size={16} />
       </button>
     </div>
   );

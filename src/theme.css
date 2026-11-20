@@ -1627,8 +1627,14 @@ button:hover {
   opacity: 0;
 }
 .topic-row:hover .topic-options,
-.topic-row:focus-within .topic-options {
+.topic-row:focus-within .topic-options,
+.channel-row:hover .channel-options,
+.channel-row:focus-within .channel-options {
   opacity: 1;
+}
+.channel-row.muted .channel-name {
+  color: var(--muted);
+  opacity: 0.7;
 }
 .topic-options:hover {
   background: var(--hover);

@@ -72,8 +72,16 @@ export async function channelDirectory(
     throw new Error(
       "The channel directory exceeds this client's 10,000-channel limit.",
     );
+  const personal = new Map(
+    subscriptions.subscriptions.map((c) => [c.stream_id, c]),
+  );
   return {
-    channels: directory.streams.filter((c) => !!c.is_archived === archived),
+    channels: directory.streams
+      .filter((c) => !!c.is_archived === archived)
+      .map((c) => {
+        const subscription = personal.get(c.stream_id);
+        return subscription ? { ...c, is_muted: subscription.is_muted } : c;
+      }),
     subscribed: new Set(subscriptions.subscriptions.map((c) => c.stream_id)),
   };
 }
